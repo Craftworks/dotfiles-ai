@@ -1,0 +1,9 @@
+---
+description: パス連動サンプル。src 配下でのみ使う
+globs: src/**
+alwaysApply: false
+---
+
+# Sample Globs
+
+パス連動ルールのサンプル本文。

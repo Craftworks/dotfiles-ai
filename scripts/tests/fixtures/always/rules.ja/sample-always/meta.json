@@ -1,0 +1,7 @@
+{
+  "description": "常駐サンプル。常に適用されるルールのフィクスチャ",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": true
+  }
+}

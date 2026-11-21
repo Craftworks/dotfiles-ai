@@ -1,0 +1,7 @@
+{
+  "description": "UI/UXは目的側の最上位。体感性能・フィードバック・状態表示・アクセシビリティ。画面・フロント・操作感・UI文言・デザイン実装時に使う",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

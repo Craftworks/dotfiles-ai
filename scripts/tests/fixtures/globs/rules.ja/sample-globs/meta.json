@@ -1,0 +1,7 @@
+{
+  "description": "パス連動サンプル。src 配下でのみ使う",
+  "cursor": {
+    "globs": "src/**",
+    "alwaysApply": false
+  }
+}

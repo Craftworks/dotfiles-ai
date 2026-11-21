@@ -1,0 +1,7 @@
+{
+  "description": "エラー処理・不変条件・境界検証・サイレント失敗禁止。バグ修正、例外処理、入出力、外部連携、並行処理時に使う",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

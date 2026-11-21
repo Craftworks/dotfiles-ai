@@ -1,0 +1,7 @@
+{
+  "description": "可読性・命名・局所性・テスト可能性。実装全般、レビュー、リネーム、整理、テスト追加時に使う",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

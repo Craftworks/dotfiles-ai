@@ -1,0 +1,7 @@
+{
+  "description": "プロダクトの背骨。ジョブ・非目標・ロール・未知入力時の既定。新規着手、設計、リファクタ方針、スコープ議論、SPECと実装の差分確認時に使う",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

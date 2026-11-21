@@ -1,0 +1,7 @@
+{
+  "description": "アーキテクチャ境界・依存方向・過剰抽象の禁止。設計、リファクタ、新規モジュール追加、レイヤ変更時に使う",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

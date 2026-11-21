@@ -1,0 +1,7 @@
+{
+  "description": "SSOT・設定とコードの分離・段の契約・運行の真実は一つ。プロファイル、設定抽出、プロセス分割、IPC、デプロイ切替、二重管理の整理時に使う",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

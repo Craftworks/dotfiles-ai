@@ -1,0 +1,7 @@
+{
+  "description": "自動判定サンプル。説明文で判定される",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}
