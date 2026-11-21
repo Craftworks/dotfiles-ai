@@ -1,0 +1,15 @@
+# OS and editor local state
+.DS_Store
+Thumbs.db
+
+# Secrets: never commit credentials or tokens
+.env
+.env.*
+*.key
+*.pem
+*secret*
+*credentials*
+
+# Local-only overrides and scratch
+*.local
+tmp/
