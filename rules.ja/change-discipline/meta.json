@@ -1,0 +1,7 @@
+{
+  "description": "変更の進め方。小さな差分、推測実装禁止、既存踏襲、サイレント失敗禁止、境界検証。実装・修正・PR・リファクタの開始時に使う",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": true
+  }
+}
