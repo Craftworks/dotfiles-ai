@@ -13,3 +13,6 @@ Thumbs.db
 # Local-only overrides and scratch
 *.local
 tmp/
+
+# Python bytecode cache
+__pycache__/
