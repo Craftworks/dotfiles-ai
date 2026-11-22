@@ -2,7 +2,7 @@
 
 This README is the specification of the scripts directory.
 
-It holds the scripts that process the canonical sources in `rules/`. Both scripts are currently unimplemented (design only).
+It holds the scripts that process the canonical sources in `rules.ja/`. Both scripts are currently unimplemented (design only).
 
 | Script | Job |
 |---|---|
@@ -11,7 +11,7 @@ It holds the scripts that process the canonical sources in `rules/`. Both script
 
 ## build-rules
 
-Purpose: generate `.cursor/rules/<name>.mdc` and `.claude/rules/<name>.md` from `body.md` and `meta.json` in `rules/<name>/`.
+Purpose: generate `.cursor/rules/<name>.mdc` and `.claude/rules/<name>.md` from `body.md` and `meta.json` in `rules.ja/<name>/`.
 
 Input/output contract:
 
@@ -36,7 +36,7 @@ Validation and errors:
 - All rules are validated first (required keys, types, and unknown keys in meta.json; existence of body.md). Writing starts only after every rule passes. If any rule is invalid, the script exits with an error and no output files are written
 - Error messages take the form: rule name, cause, next action. The exit code reports success or failure
 
-Implementation: Python 3, standard library only, a single file (no extension). JSON is read with the standard `json` module, and frontmatter strings are emitted as YAML double-quoted scalars using JSON-style quoting. It must run on both Mac and Windows.
+Implementation: Python 3, standard library only, a single file (no extension). JSON is read with the standard `json` module. Frontmatter values are emitted as unquoted plain scalars, with keys ordered description, globs, alwaysApply, matching the current .mdc files. It must run on both Mac and Windows.
 
 Tests: built test-first. Golden-file comparison on three fixtures (alwaysApply / globs / description only), a regression run over the real 11 rules (the generated output must match the current `.mdc` files byte for byte), and error cases (missing file, invalid JSON, unknown key — verifying that nothing is written).
 
@@ -50,11 +50,11 @@ Done conditions:
 
 ## translate-rules
 
-Purpose: generate the English edition `rules.en/` for publication from `rules/` (the Japanese canonical sources). This repository is published openly, so an English edition is provided; the canonical sources stay in Japanese, the language the approver can verify directly, and the English edition is a generated artifact.
+Purpose: generate the English edition `rules.en/` for publication from `rules.ja/` (the Japanese canonical sources). This repository is published openly, so an English edition is provided; the canonical sources stay in Japanese, the language the approver can verify directly, and the English edition is a generated artifact.
 
 - The scope is `body.md` and the `description` in `meta.json`. `basis.md` (the rationale) is a document for the approver and is out of scope
 - The output is `rules.en/` only. Distribution is performed by build-rules from the Japanese canonical sources
-- It runs when the canonical sources have been updated. Targets are identified from the changed files under `rules/` via `git diff`; rule names can also be given explicitly
+- It runs when the canonical sources have been updated. Targets are identified from the changed files under `rules.ja/` via `git diff`; rule names can also be given explicitly
 - Translation is non-deterministic: within a changed file, the wording of unchanged paragraphs may also shift. Review is done per changed file
 
 ## How this specification is kept
