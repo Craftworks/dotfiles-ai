@@ -24,8 +24,7 @@ dotfiles-ai/
 ├── scripts/               # 正本を処理する生成スクリプト（仕様は同所の README）
 ├── .cursor/
 │   ├── rules/             # Cursor ルール（.mdc）と、その索引 README.md
-│   └── skills/
-│       └── git/           # git スキル（SKILL.md）
+│   └── skills/            # スキル（SKILL.md）。skills.ja から配置
 └── .claude/               # Claude Code 側の設定をここへ
 ```
 

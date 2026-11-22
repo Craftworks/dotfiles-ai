@@ -24,8 +24,7 @@ dotfiles-ai/
 ├── scripts/               # generators that process the canonical source (specification in the README there)
 ├── .cursor/
 │   ├── rules/             # Cursor rules (.mdc) and their index README.md
-│   └── skills/
-│       └── git/           # git skill (SKILL.md)
+│   └── skills/            # skills (SKILL.md), deployed from skills.ja
 └── .claude/               # Claude Code configuration goes here
 ```
 
