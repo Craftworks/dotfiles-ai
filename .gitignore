@@ -16,3 +16,7 @@ tmp/
 
 # Python bytecode cache
 __pycache__/
+
+# Rules
+.cursor/rules/* !.cursor/rules/.gitkeep
+.claude/rules/* !.claude/rules/.gitkeep
