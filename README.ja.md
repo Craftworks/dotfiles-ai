@@ -2,7 +2,7 @@
 
 # dotfiles-ai
 
-AI 開発環境の設定リポジトリ。Cursor / Claude Code / Muse Code の3者に共有する原則・ルール・スキルの正本とし、各ツールへはここから配置する。正本はリポジトリ直下（ルールは `rules.ja/`、スキルは `skills.ja/`）に置き、プラットフォーム別ディレクトリ（`.cursor/`、`.claude/`）は配置先のホームディレクトリ構成に対応させている。
+AI 開発環境の設定リポジトリ。Cursor / Claude Code / Muse Code の3者に共有する原則・ルール・スキルの正本とし、各ツールへはここから配置する。正本はリポジトリ直下（ルールは `rules.ja/`、スキルは `skills.ja/`）に置く。ルールはプラットフォーム別ディレクトリ（`.cursor/`、`.claude/`）へ生成し、スキルはリポジトリ内にコピーを持たず、各ツールが読むホームディレクトリの置き場へ直接インストールする。
 
 ## 役割分担
 
@@ -23,8 +23,7 @@ dotfiles-ai/
 ├── skills.ja/             # スキルの正本：スキルごとに1ディレクトリ（SKILL.md）
 ├── scripts/               # 正本を処理する生成スクリプト（仕様は同所の README）
 ├── .cursor/
-│   ├── rules/             # Cursor ルール（.mdc）と、その索引 README.md
-│   └── skills/            # スキル（SKILL.md）。skills.ja から配置
+│   └── rules/             # Cursor ルール（.mdc）と、その索引 README.md
 └── .claude/               # Claude Code 側の設定をここへ
 ```
 
