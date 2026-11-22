@@ -1,7 +1,0 @@
-{
-  "description": "Git運用。trunk-based、短命ブランチ、コミットメッセージ規約（英語が既定）、フック方針。コミット、ブランチ、履歴整理、タグ、フック設定時に使う",
-  "cursor": {
-    "globs": null,
-    "alwaysApply": false
-  }
-}

@@ -2,7 +2,7 @@ English | [日本語](README.ja.md)
 
 # dotfiles-ai
 
-Configuration repository for an AI development environment. It is the canonical source of the principles, rules, and skills shared by Cursor, Claude Code, and Muse Code, and each tool is deployed from here. The canonical source lives at the repository root (`rules.ja/`); the per-platform directories (`.cursor/`, `.claude/`) match the home-directory layout they deploy into.
+Configuration repository for an AI development environment. It is the canonical source of the principles, rules, and skills shared by Cursor, Claude Code, and Muse Code, and each tool is deployed from here. The canonical sources live at the repository root (`rules.ja/` for rules, `skills.ja/` for skills); the per-platform directories (`.cursor/`, `.claude/`) match the home-directory layout they deploy into.
 
 ## Roles
 
@@ -20,11 +20,12 @@ dotfiles-ai/
 ├── README.md              # this file (English version)
 ├── README.ja.md           # Japanese version
 ├── rules.ja/              # canonical rule source: one directory per rule (body.md, meta.json)
+├── skills.ja/             # canonical skill source: one directory per skill (SKILL.md)
 ├── scripts/               # generators that process the canonical source (specification in the README there)
 ├── .cursor/
 │   ├── rules/             # Cursor rules (.mdc) and their index README.md
 │   └── skills/
-│       └── commit-command/ # first shared skill (SKILL.md)
+│       └── git/           # git skill (SKILL.md)
 └── .claude/               # Claude Code configuration goes here
 ```
 
