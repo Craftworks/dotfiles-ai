@@ -18,5 +18,7 @@ tmp/
 __pycache__/
 
 # Rules
-.cursor/rules/* !.cursor/rules/.gitkeep
-.claude/rules/* !.claude/rules/.gitkeep
+.cursor/rules/*
+!.cursor/rules/.gitkeep
+.claude/rules/*
+!.claude/rules/.gitkeep
