@@ -1,7 +1,0 @@
-{
-  "description": "パフォーマンス。計測先行、ホットパス、無駄な再計算・過剰I/O・早すぎる最適化の禁止。遅い・重い・最適化・スケールの話題で使う",
-  "cursor": {
-    "globs": null,
-    "alwaysApply": false
-  }
-}
