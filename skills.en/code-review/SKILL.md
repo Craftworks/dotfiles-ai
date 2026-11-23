@@ -79,6 +79,16 @@ Present the two reports under the headings `## Standards` and `## Spec`, as they
 
 Finish with a one-line summary: the total number of findings per axis, and the worst finding within each axis (if any). Do not pick a single winner across axes: that is exactly the ranking the separation is meant to prevent.
 
+### 6. Write to a file
+
+Also write the aggregated report to `var/reviews/` at the root of the target repository. Present it in chat as before; the file is a copy for handoff.
+
+- Location: `var/reviews/<date>-<target>/review.md`. The date is the day of the run (YYYY-MM-DD), and the target is the current branch name (replace `/` with `-`). If the branch name can't be determined, use the short SHA of the fixed point
+- Contents: the report from step 5 itself. At the top, write the diff command used, the commit range, the date, and the reviewer (the agent and model that ran it)
+- If the same directory already exists, overwrite `review.md` (a re-review replaces the old one)
+- If `var/reviews/` is not ignored by the target repository's `.gitignore`, add one line for it
+- Finally, tell the user the path of the file you wrote
+
 ## Why two axes
 
 A change can pass on one axis and fail on the other:
