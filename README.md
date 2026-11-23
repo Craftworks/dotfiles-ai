@@ -8,12 +8,12 @@ This README is canonical in English; `README.ja.md` is kept in sync in the same 
 
 ## Roles
 
-- **The human = the approver**: judges design, vulnerabilities, performance, and cost, and approves on evidence (test results, diffs, measurements)
-- **Cursor = the approver's cockpit**: a window for reading diffs, following code, and approving. Its agent is used for git operations, where working in the IDE is easier to follow; its cloud features are not used
-- **claude = the hands**: implements and tests
-- **muse = the secretary**: does not implement. Decomposes tasks, dispatches them to claude, manages state, and reports. Its concrete duties are still to be decided
+- **The user = the approver**: judges design, vulnerabilities, performance, and cost, and approves on evidence (test results, diffs, measurements)
+- **Cursor = the cockpit**: a window for reading diffs, following code, and approving
+- **claude = the craftsman**: implements and tests
+- **muse = the auditor**: does not implement or fix code (documentation changes are in scope). Verifies review findings against the rules, the specifications, and recorded decisions, and sorts them into adopt, reject (with reasons), or defer. Backs fix reports by rerunning the tests and checking them against the specifications. Keeps the record of decisions and state, and prepares the material the user approves on
 
-When the secretary's context grows long, it is written out to files, and sessions are disposable at any time. The source of truth for state is files, not conversation, and the only writer of state files is the secretary (muse).
+When the auditor's context grows long, it is written out to files, and sessions are disposable at any time. The source of truth for state is files, not conversation, and the only writer of state files is the auditor (muse).
 
 ## Current layout (v0)
 
