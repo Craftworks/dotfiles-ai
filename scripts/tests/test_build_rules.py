@@ -91,6 +91,9 @@ class GoldenFixtureTest(unittest.TestCase):
         root = make_root(fixture)
         result = run_build(root)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("wrote ", result.stdout)
+        self.assertIn(".cursor/rules/", result.stdout)
+        self.assertIn(".claude/rules/", result.stdout)
         expected = read_tree(fixture / "expected")
         actual = generated_outputs(root)
         self.assertEqual(set(actual), set(expected),
@@ -125,6 +128,10 @@ class CheckModeTest(unittest.TestCase):
         before = read_tree(root)
         ok = run_build(root, "--check")
         self.assertEqual(ok.returncode, 0, msg=ok.stderr)
+        self.assertIn("checked ", ok.stdout)
+        self.assertIn("all match; wrote nothing", ok.stdout)
+        self.assertIn(".cursor/rules/sample-auto.mdc", ok.stdout)
+        self.assertIn(".claude/rules/sample-auto.md", ok.stdout)
         self.assertEqual(read_tree(root), before, msg="--check rewrote files")
 
         target = root / ".cursor" / "rules" / "sample-auto.mdc"
@@ -132,7 +139,11 @@ class CheckModeTest(unittest.TestCase):
         tampered = read_tree(root)
         ng = run_build(root, "--check")
         self.assertNotEqual(ng.returncode, 0)
-        assert_names_file(self, ng.stdout + ng.stderr, "sample-auto.mdc")
+        report = ng.stdout + ng.stderr
+        assert_names_file(self, report, "sample-auto.mdc")
+        self.assertIn("differs: .cursor/rules/sample-auto.mdc", report)
+        self.assertIn("deliverables do not match rules.ja", report)
+        self.assertIn("run without --check to write them.", report)
         self.assertEqual(read_tree(root), tampered, msg="--check wrote files after a drift")
 
     def test_check_fails_when_outputs_missing(self):
@@ -140,10 +151,30 @@ class CheckModeTest(unittest.TestCase):
         ng = run_build(root, "--check")
         self.assertNotEqual(ng.returncode, 0)
         report = ng.stdout + ng.stderr
-        assert_names_file(self, report, "sample-auto.mdc")
-        assert_names_file(self, report, "sample-auto.md")
+        self.assertIn("output directory does not exist", report)
+        self.assertIn("missing: .cursor/rules", report)
+        self.assertIn("missing: .claude/rules", report)
+        self.assertNotIn("sample-auto.mdc", report)
+        self.assertNotIn("sample-auto.md", report)
+        self.assertIn("run without --check to write them.", report)
         self.assertFalse((root / ".cursor").exists(), msg="--check created .cursor")
         self.assertFalse((root / ".claude").exists(), msg="--check created .claude")
+
+    def test_check_fails_when_output_directories_are_empty(self):
+        root = make_root(FIXTURES / "auto")
+        (root / ".cursor" / "rules").mkdir(parents=True)
+        (root / ".claude" / "rules").mkdir(parents=True)
+        ng = run_build(root, "--check")
+        self.assertNotEqual(ng.returncode, 0)
+        report = ng.stdout + ng.stderr
+        self.assertIn("output directory is empty", report)
+        self.assertIn("empty: .cursor/rules", report)
+        self.assertIn("empty: .claude/rules", report)
+        self.assertNotIn("sample-auto.mdc", report)
+        self.assertNotIn("sample-auto.md", report)
+        self.assertIn("run without --check to write them.", report)
+        self.assertEqual(list((root / ".cursor" / "rules").iterdir()), [])
+        self.assertEqual(list((root / ".claude" / "rules").iterdir()), [])
 
 
 class InvalidInputTest(unittest.TestCase):
@@ -194,6 +225,9 @@ class RealRulesSnapshotTest(unittest.TestCase):
         root = make_root(fixture)
         result = run_build(root)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("wrote ", result.stdout)
+        self.assertIn(".cursor/rules/", result.stdout)
+        self.assertIn(".claude/rules/", result.stdout)
         expected = read_tree(fixture / "expected")
         self.assertEqual(len(expected), 22)
         actual = generated_outputs(root)

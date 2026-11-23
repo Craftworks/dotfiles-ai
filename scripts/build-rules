@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""Generate Cursor and Claude rules from rules.ja."""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Generate .cursor/rules and .claude/rules from rules.ja.",
+    )
+    parser.add_argument(
+        "--root",
+        required=True,
+        help="directory that contains rules.ja",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="compare deliverables and write nothing; name any that are missing or differ",
+    )
+    args = parser.parse_args(argv)
+    root = Path(args.root)
+    output_dirs = (".cursor/rules", ".claude/rules")
+    missing_dirs: list[str] = []
+    if args.check:
+        missing_dirs = [rel for rel in output_dirs if not (root / rel).is_dir()]
+        if len(missing_dirs) == len(output_dirs):
+            print(
+                "output directory does not exist. --check writes nothing.",
+                file=sys.stderr,
+            )
+            for rel in missing_dirs:
+                print(f"missing: {rel}", file=sys.stderr)
+            print("run without --check to write them.", file=sys.stderr)
+            return 1
+    rules_dir = root / "rules.ja"
+    errors: list[str] = []
+    planned: list[tuple[Path, bytes]] = []
+    for rule_dir in sorted(p for p in rules_dir.iterdir() if p.is_dir()):
+        meta_path = rule_dir / "meta.json"
+        if not meta_path.is_file():
+            errors.append(f"{rule_dir.name}: missing meta.json. create meta.json")
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            errors.append(
+                f"{rule_dir.name}: invalid JSON in meta.json. fix meta.json"
+            )
+            continue
+        unknown = [key for key in meta if key not in {"description", "cursor"}]
+        if unknown:
+            key = unknown[0]
+            errors.append(
+                f'{rule_dir.name}: unknown key "{key}". '
+                "remove the unknown key or extend the schema"
+            )
+            continue
+        body_path = rule_dir / "body.md"
+        if not body_path.is_file():
+            errors.append(f"{rule_dir.name}: missing body.md. create body.md")
+            continue
+        body = body_path.read_bytes()
+        cursor = meta["cursor"]
+        globs = cursor.get("globs")
+        lines = ["---", f"description: {meta['description']}"]
+        if globs:
+            lines.append(f"globs: {globs}")
+        if cursor.get("alwaysApply") is not None:
+            flag = "true" if cursor["alwaysApply"] else "false"
+            lines.append(f"alwaysApply: {flag}")
+        lines.append("---")
+        rendered = ("\n".join(lines) + "\n\n").encode("utf-8") + body
+        claude_body = body
+        if globs:
+            claude_body = (
+                f"---\npaths:\n  - {globs}\n---\n\n".encode("utf-8") + body
+            )
+        planned.append(
+            (root / ".cursor" / "rules" / f"{rule_dir.name}.mdc", rendered)
+        )
+        planned.append(
+            (root / ".claude" / "rules" / f"{rule_dir.name}.md", claude_body)
+        )
+    if errors:
+        for message in errors:
+            print(message, file=sys.stderr)
+        return 1
+    drifted: list[str] = []
+    empty_dirs: list[str] = []
+    if args.check:
+        by_parent: dict[str, list[Path]] = {}
+        for path, _data in planned:
+            parent = path.parent.relative_to(root).as_posix()
+            by_parent.setdefault(parent, []).append(path)
+        for parent in output_dirs:
+            paths = by_parent.get(parent, [])
+            if paths and parent not in missing_dirs and all(not path.is_file() for path in paths):
+                empty_dirs.append(parent)
+    for path, data in planned:
+        if args.check:
+            rel = path.relative_to(root).as_posix()
+            parent = path.parent.relative_to(root).as_posix()
+            if parent in missing_dirs or parent in empty_dirs:
+                continue
+            if not path.is_file():
+                drifted.append(f"missing: {rel}")
+            elif path.read_bytes() != data:
+                drifted.append(f"differs: {rel}")
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    if missing_dirs or empty_dirs or drifted:
+        if missing_dirs and not empty_dirs and not drifted:
+            summary = "output directory does not exist. --check writes nothing."
+        elif empty_dirs and not missing_dirs and not drifted:
+            summary = "output directory is empty. --check writes nothing."
+        else:
+            summary = "deliverables do not match rules.ja. --check writes nothing."
+        print(summary, file=sys.stderr)
+        for rel in missing_dirs:
+            print(f"missing: {rel}", file=sys.stderr)
+        for rel in empty_dirs:
+            print(f"empty: {rel}", file=sys.stderr)
+        for line in drifted:
+            print(line, file=sys.stderr)
+        print("run without --check to write them.", file=sys.stderr)
+        return 1
+    count = len(planned)
+    if args.check:
+        print(
+            f"checked {count} files from rules.ja under {root}; all match; wrote nothing"
+        )
+    else:
+        print(f"wrote {count} files from rules.ja under {root}")
+    for path, _data in planned:
+        print(path.relative_to(root).as_posix())
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

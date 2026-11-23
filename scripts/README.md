@@ -2,7 +2,7 @@
 
 This README is the specification of the scripts directory.
 
-It holds the scripts that process the canonical sources in `rules.ja/`. Both scripts are currently unimplemented (design only).
+It holds the scripts that process the canonical sources in `rules.ja/`. `build-rules` is implemented. `translate-rules` is currently unimplemented (design only).
 
 | Script | Job |
 |---|---|
@@ -18,6 +18,8 @@ Input/output contract:
 - The input is the canonical sources only. The output is a pure function of the input: the same input always produces the same bytes (idempotent)
 - Generated files carry no marker header. Drift from the canonical sources is detected by `--check`, not by text inside the file
 - `--check` writes nothing; it only verifies that the generated files match the canonical sources, and exits with an error naming any file that has drifted
+- Reporting is part of the contract. A normal run prints what it did on stdout: a summary line (`wrote <count> files from rules.ja under <root>`) followed by the path of every file written. A successful `--check` prints `checked <count> files from rules.ja under <root>; all match; wrote nothing` followed by every path checked. Silent success is a defect: it is indistinguishable from nothing happening
+- A failed `--check` prints a summary line, one line per problem, and the next action (`run without --check to write them.`) on stderr. A differing or missing file is named individually (`differs: <path>`, `missing: <path>`); when a whole output directory is missing or empty, the directory is named once (`missing: <dir>`, `empty: <dir>`) and the files under it are not listed. Problems are reported at the unit the operator acts on
 
 Non-goals: translation, installation into the home directory, git operations, watch mode, incremental processing.
 
@@ -38,13 +40,13 @@ Validation and errors:
 
 Implementation: Python 3, standard library only, a single file (no extension). JSON is read with the standard `json` module. Frontmatter values are emitted as unquoted plain scalars, with keys ordered description, globs, alwaysApply, matching the current .mdc files. It must run on both Mac and Windows.
 
-Tests: built test-first. Golden-file comparison on three fixtures (alwaysApply / globs / description only), a regression run over the real 11 rules (the generated output must match the current `.mdc` files byte for byte), and error cases (missing file, invalid JSON, unknown key — verifying that nothing is written).
+Tests: built test-first. Golden-file comparison on three fixtures (alwaysApply / globs / description only); a regression run over a frozen snapshot of the real rules (inputs and expected outputs captured on 2026-11-21 under `scripts/tests/fixtures/real/` — the snapshot is the oracle, never the live outputs); assertions on the output reporting (what a run says it wrote or checked); `--check` cases (clean, tampered, missing files, missing or empty output directories); and error cases (missing file, invalid JSON, unknown key, and a mix of valid and invalid rules — verifying that nothing is written).
 
 Done conditions:
 
-1. On the real repository, the generated `.cursor/rules/*.mdc` match the current files byte for byte
+1. Against the frozen snapshot of the real rules, the generated files match the expected outputs byte for byte
 2. Running it twice in a row produces zero diff on the second run
-3. `--check` exits successfully when the outputs match the canonical sources, and exits with an error naming the file when a generated file has been edited by hand
+3. `--check` exits successfully when the outputs match the canonical sources, and exits with an error when a generated file has been edited by hand, a file is missing, or an output directory is missing or empty — naming the drifted file, or the directory alone when the whole directory is the problem
 4. On invalid input it exits with an error and writes no output files at all
 5. On a fixture with globs, the Claude format carries a correct `paths` frontmatter
 
