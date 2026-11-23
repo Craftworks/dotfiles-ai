@@ -6,6 +6,8 @@ import os
 import sys
 from pathlib import Path
 
+from skill_source import load_skill_md
+
 DESTINATIONS = (".claude/skills", ".cursor/skills")
 CHECK_NEXT = (
     "run without --check to install the links; "
@@ -43,21 +45,6 @@ def conflicts(root: Path, home: Path, skills: list[Path], destinations: tuple[st
     return found
 
 
-def frontmatter(path: Path) -> dict[str, str]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    meta: dict[str, str] = {}
-    if not lines or lines[0].strip() != "---":
-        return meta
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        meta[key.strip()] = value.strip()
-    return meta
-
-
 def validate(skills: list[Path], destinations: tuple[str, ...]) -> list[str]:
     errors: list[str] = []
     reject_synced = any(dest.startswith(".claude/") for dest in destinations)
@@ -67,34 +54,9 @@ def validate(skills: list[Path], destinations: tuple[str, ...]) -> list[str]:
                 f'{skill.name}: name "{skill.name}" is reserved. rename the skill'
             )
             continue
-        skill_md = skill / "SKILL.md"
-        if not skill_md.is_file():
-            errors.append(f"{skill.name}: missing SKILL.md. create SKILL.md")
-            continue
-        meta = frontmatter(skill_md)
-        name = meta.get("name")
-        if name is None:
-            errors.append(f"{skill.name}: missing name. add a non-empty name")
-            continue
-        if name == "":
-            errors.append(f"{skill.name}: name is empty. set name to {skill.name}")
-            continue
-        if name != skill.name:
-            errors.append(
-                f'{skill.name}: name "{name}" does not match the directory. '
-                f"set name to {skill.name}"
-            )
-            continue
-        if "description" not in meta:
-            errors.append(
-                f"{skill.name}: missing description. add a non-empty description"
-            )
-            continue
-        if meta["description"] == "":
-            errors.append(
-                f"{skill.name}: description is empty. "
-                "set description to a non-empty string"
-            )
+        loaded = load_skill_md(skill)
+        if isinstance(loaded, str):
+            errors.append(loaded)
     return errors
 
 
