@@ -46,4 +46,3 @@ dotfiles-ai/
 
 - Add Claude Code configuration (subagent definitions, hooks) under `.claude/`
 - Build an index of principles (which principle falls into which layer)
-- Script the deployment (install) procedure
