@@ -1,0 +1,429 @@
+#!/usr/bin/env python3
+"""Generate the English edition rules.en from rules.ja."""
+
+import argparse
+import difflib
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+# The translator's model and prompt are defined here and nowhere else.
+# Sonnet over Haiku, measured on 2026-11-23 with the JSON shape below: both
+# kept the line contract in 18 of 18 runs; Sonnet kept the source's emphasis
+# and added no trailing period (Haiku added 2), at about 1.7 yen per rule.
+MODEL = "claude-sonnet-5-5"
+# The request and the answer are JSON: a description string and a body array
+# with one string per line. Measured on 2026-11-23 with Haiku, plain lines
+# kept the line contract in 13 of 18 runs (the description was merged into or
+# swapped with the "# Title" heading); this JSON shape kept it in 18 of 18.
+PROMPT = (
+    "Translate the Japanese in the JSON object on standard input into English. "
+    'Output only a JSON object with the same keys: "description" (a string) '
+    'and "body" (an array of strings). The body array must have exactly as '
+    "many elements as the input, element i translating element i. Keep empty "
+    "strings empty, keep each element's Markdown marker (heading level, list "
+    "marker, table row, code fence), keep text already in English and "
+    "identifiers unchanged, and add no trailing period where the Japanese has "
+    "none. No code fence around the JSON."
+)
+
+
+NEXT_ACTION = "make claude -p succeed, then rerun"
+
+# Kana, CJK ideographs, and CJK and full-width punctuation. Any of these in the
+# output means a line was not translated.
+JAPANESE = re.compile(r"[\u3000-\u303f\u3040-\u30ff\u4e00-\u9fff\uff00-\uffef]")
+MARKER = re.compile(r"^(\s*)(#{1,6}\s|[-*+]\s|\d+\.\s|>|\||```)")
+
+
+def marker(line: str) -> str:
+    """The Markdown marker a line starts with: what the line contract keeps."""
+    if not line.strip():
+        return "blank"
+    found = MARKER.match(line)
+    if not found:
+        return "text"
+    indent, mark = found.groups()
+    if mark[0].isdigit():
+        mark = "1."
+    return f"{len(indent)}:{mark.strip()}"
+
+
+def check_output(ja: list[str], output: str) -> list[str]:
+    """The answer as rule lines ([description] + body), if it keeps the line
+    contract with ja (the same shape).
+
+    Raises TranslatorFailed naming the first way the answer breaks it. Body
+    line numbers are 1-based, as in body.md.
+    """
+    if not output.strip():
+        raise TranslatorFailed("translator output is empty")
+    try:
+        answer = json.loads(output)
+    except json.JSONDecodeError:
+        answer = None
+    if (not isinstance(answer, dict)
+            or not isinstance(answer.get("description"), str)
+            or not isinstance(answer.get("body"), list)
+            or not all(isinstance(line, str) for line in answer["body"])):
+        raise TranslatorFailed(
+            "translator output is not a JSON object with a description string "
+            "and a body array of strings")
+    body = answer["body"]
+    if len(body) != len(ja) - 1:
+        raise TranslatorFailed(
+            f"translator output body has {len(body)} lines "
+            f"for {len(ja) - 1} Japanese lines")
+    en = [answer["description"]] + body
+    for index, (ja_line, en_line) in enumerate(zip(ja, en)):
+        where = "description" if index == 0 else f"body line {index}"
+        if marker(ja_line) != marker(en_line):
+            raise TranslatorFailed(
+                f"translator output {where} does not keep "
+                "the Markdown marker of the Japanese")
+        if JAPANESE.search(en_line):
+            raise TranslatorFailed(
+                f"translator output {where} still contains Japanese")
+    return en
+
+
+def splice(prev_ja: list[str], prev_en: list[str], ja: list[str],
+           new_en: list[str]) -> list[str]:
+    """Keep the previous English for every Japanese line that did not change.
+
+    prev_ja and prev_en are a base pair of equal length (line i of one is the
+    translation of line i of the other); new_en has one line per line of ja.
+    """
+    matcher = difflib.SequenceMatcher(None, prev_ja, ja, autojunk=False)
+    result: list[str] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            result.extend(prev_en[i1:i2])
+        else:
+            result.extend(new_en[j1:j2])
+    return result
+
+
+def kept_pairs(prev_ja: list[str], prev_en: list[str], ja: list[str]) -> list[list[str]]:
+    """[Japanese, English] for each non-blank line kept unchanged from the
+    base pair: the only previous English the translator is shown.
+
+    The English of a changed line is left out on purpose: shown it, Haiku
+    copied the old line instead of translating the new Japanese.
+    """
+    matcher = difflib.SequenceMatcher(None, prev_ja, ja, autojunk=False)
+    pairs = []
+    for tag, i1, i2, _j1, _j2 in matcher.get_opcodes():
+        if tag == "equal":
+            pairs.extend([prev_ja[i], prev_en[i]] for i in range(i1, i2)
+                         if prev_ja[i].strip())
+    return pairs
+
+
+class TranslatorFailed(Exception):
+    """A translator call failed; the message is the cause, for the error line."""
+
+
+def kill_tree(process: subprocess.Popen) -> None:
+    # claude may start children of its own; a timeout must not leave them.
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                       capture_output=True)
+    else:
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
+
+
+def call_translator(translator: str, ja: list[str], reference: list[list[str]],
+                    timeout: float) -> str:
+    """Run one translator call and return its standard output (LF line endings).
+
+    Raises TranslatorFailed when the command is missing, exits non-zero, or
+    does not finish within timeout seconds.
+    """
+    prompt = PROMPT
+    if reference:
+        prompt += (
+            "\n\nFor consistent terms, these [Japanese, English] pairs are "
+            "lines translated before:\n\n" + json.dumps(reference, ensure_ascii=False)
+        )
+    request = json.dumps({"description": ja[0], "body": ja[1:]}, ensure_ascii=False)
+    command = [
+        translator, "-p",
+        "--model", MODEL,
+        "--tools", "",
+        "--strict-mcp-config",
+        "--setting-sources", "",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+        "--system-prompt", prompt,
+    ]
+    # The translator starts in an empty directory with every source of
+    # context switched off, so CLAUDE.md, rules, hooks, MCP servers and
+    # skills cannot leak into the translation, and it has no tools.
+    with tempfile.TemporaryDirectory(prefix="translate-rules-") as workdir:
+        try:
+            process = subprocess.Popen(
+                command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, cwd=workdir,
+                start_new_session=os.name != "nt",
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            )
+        except FileNotFoundError:
+            raise TranslatorFailed(f'translator "{translator}" was not found') from None
+        try:
+            stdout, stderr = process.communicate(request.encode("utf-8"), timeout=timeout)
+        except subprocess.TimeoutExpired:
+            kill_tree(process)
+            raise TranslatorFailed(
+                f"translator did not finish within {timeout:g} seconds") from None
+    if process.returncode != 0:
+        detail = stderr.decode("utf-8", "replace").strip().splitlines()
+        reason = f" ({detail[0]})" if detail else ""
+        raise TranslatorFailed(
+            f"translator exited with status {process.returncode}{reason}")
+    return stdout.decode("utf-8").replace("\r\n", "\n")
+
+
+def validate_rule(rule_dir: Path) -> tuple[str, str] | str:
+    """(meta.json text, body.md text) for a valid rule, or the error line.
+
+    The checks and messages are the ones build-rules applies, so a rule is
+    valid for both scripts or for neither.
+    """
+    name = rule_dir.name
+    meta_path = rule_dir / "meta.json"
+    if not meta_path.is_file():
+        return f"{name}: missing meta.json. create meta.json"
+    meta_text = meta_path.read_text(encoding="utf-8")
+    try:
+        meta = json.loads(meta_text)
+    except json.JSONDecodeError:
+        return f"{name}: invalid JSON in meta.json. fix meta.json"
+    if not isinstance(meta, dict):
+        return f"{name}: meta.json is not an object. replace meta.json with an object"
+    unknown = [key for key in meta if key not in {"description", "cursor"}]
+    if unknown:
+        return (f'{name}: unknown key "{unknown[0]}". '
+                "remove the unknown key or extend the schema")
+    if "description" not in meta:
+        return f"{name}: missing description. add a string description"
+    if not isinstance(meta["description"], str):
+        return f"{name}: description is not a string. set description to a string"
+    if "cursor" not in meta:
+        return f"{name}: missing cursor. add a cursor object"
+    cursor = meta["cursor"]
+    if not isinstance(cursor, dict):
+        return f"{name}: cursor is not an object. set cursor to an object"
+    cursor_unknown = [key for key in cursor if key not in {"globs", "alwaysApply"}]
+    if cursor_unknown:
+        return (f'{name}: unknown key "{cursor_unknown[0]}" in cursor. '
+                "remove the unknown key or extend the schema")
+    globs = cursor.get("globs")
+    if globs is not None and not isinstance(globs, str):
+        return f"{name}: globs is not a string. set globs to a string or null"
+    if "alwaysApply" in cursor and not isinstance(cursor["alwaysApply"], bool):
+        return f"{name}: alwaysApply is not a boolean. set alwaysApply to true or false"
+    body_path = rule_dir / "body.md"
+    if not body_path.is_file():
+        return f"{name}: missing body.md. create body.md"
+    return meta_text, body_path.read_text(encoding="utf-8")
+
+
+def git(root: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(root), *args], capture_output=True, check=True
+    )
+    return completed.stdout.decode("utf-8").replace("\r\n", "\n")
+
+
+def rule_lines(meta_text: str, body_text: str) -> list[str]:
+    """The rule as the lines the line contract and the splice work on: the
+    description, then the body lines."""
+    meta = json.loads(meta_text)
+    body = body_text.replace("\r\n", "\n")
+    return [meta["description"]] + body.rstrip("\n").split("\n")
+
+
+def base_pair(root: Path, name: str) -> tuple[str, list[str], list[str]] | str:
+    """The commit that last changed rules.en/<name>/body.md, with the Japanese
+    and English lines of the rule at that commit, or the error line.
+
+    Both sides come from the same commit, not the working tree, so line i of
+    the English is the translation of line i of the Japanese.
+    """
+    commit = git(root, "log", "-1", "--format=%H", "--",
+                 f"rules.en/{name}/body.md").strip()
+
+    def show(rel: str) -> str | None:
+        try:
+            return git(root, "show", f"{commit}:{rel}")
+        except subprocess.CalledProcessError:
+            return None
+
+    ja_meta, ja_body = show(f"rules.ja/{name}/meta.json"), show(f"rules.ja/{name}/body.md")
+    if ja_meta is None or ja_body is None:
+        return (f"{name}: rules.ja/{name} is not in commit {commit[:12]}. "
+                f"delete rules.en/{name} to translate it in full, then rerun")
+    en_meta, en_body = show(f"rules.en/{name}/meta.json"), show(f"rules.en/{name}/body.md")
+    if en_meta is None or en_body is None:
+        return (f"{name}: rules.en/{name} is incomplete in commit {commit[:12]}. "
+                f"delete rules.en/{name} to translate it in full, then rerun")
+    try:
+        ja, en = rule_lines(ja_meta, ja_body), rule_lines(en_meta, en_body)
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return (f"{name}: meta.json in commit {commit[:12]} is not a valid rule. "
+                f"delete rules.en/{name} to translate it in full, then rerun")
+    if len(ja) != len(en):
+        return (f"{name}: rules.ja/{name}/body.md has {len(ja) - 1} lines and "
+                f"rules.en/{name}/body.md has {len(en) - 1} at commit {commit[:12]}. "
+                f"delete rules.en/{name} to translate it in full, then rerun")
+    return commit, ja, en
+
+
+def git_error(root: Path) -> str | None:
+    """The error line when git cannot read history under root, else None."""
+    try:
+        subprocess.run(["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+                       capture_output=True, check=True)
+    except FileNotFoundError:
+        return "rules.en: git was not found. install git, then rerun"
+    except subprocess.CalledProcessError:
+        return (f"rules.en: {root} is not a git repository. "
+                "run translate-rules on the repository root")
+    return None
+
+
+def write_atomically(path: Path, data: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    with os.fdopen(fd, "wb") as f:
+        f.write(data.encode("utf-8"))
+    os.replace(tmp, path)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Generate the English edition rules.en from rules.ja.",
+    )
+    parser.add_argument("--root", required=True,
+                        help="repository root that contains rules.ja")
+    parser.add_argument("--translator", default="claude",
+                        help="translator command (default: claude)")
+    parser.add_argument("--timeout", type=float, default=120,
+                        help="seconds one translator call may take (default: 120)")
+    parser.add_argument("names", nargs="*", metavar="name",
+                        help="rules to consider (default: every rule)")
+    args = parser.parse_args(argv)
+    root = Path(args.root)
+    translator = shutil.which(args.translator) or args.translator
+    rules_dir = root / "rules.ja"
+
+    # Phase 1: decide every rule before any translator call, so an error in
+    # one rule costs no calls and writes nothing.
+    if not rules_dir.is_dir():
+        print("rules.ja: missing rules.ja. create rules.ja", file=sys.stderr)
+        return 1
+    available = sorted(p.name for p in rules_dir.iterdir() if p.is_dir())
+    errors = [
+        f"{name}: no such rule in rules.ja. pass the name of a directory under rules.ja"
+        for name in args.names if name not in available
+    ]
+    selected = [name for name in available if not args.names or name in args.names]
+
+    # History is read only for rules that already have English.
+    if any((root / "rules.en" / name).is_dir() for name in selected):
+        problem = git_error(root)
+        if problem:
+            print(problem, file=sys.stderr)
+            return 1
+
+    # (name, cursor, current Japanese lines, base pair or None, unchanged,
+    #  whether rules.en/<name>/meta.json holds a different cursor)
+    decided: list[tuple[str, dict, list[str], tuple[list[str], list[str]] | None,
+                        bool, bool]] = []
+    for name in selected:
+        valid = validate_rule(rules_dir / name)
+        if isinstance(valid, str):
+            errors.append(valid)
+            continue
+        meta_text, body_text = valid
+        ja_lines = rule_lines(meta_text, body_text)
+        cursor = json.loads(meta_text)["cursor"]
+        if not (root / "rules.en" / name).is_dir():
+            decided.append((name, cursor, ja_lines, None, False, False))
+            continue
+        if git(root, "status", "--porcelain", "--", f"rules.en/{name}").strip():
+            errors.append(
+                f"{name}: rules.en/{name} has uncommitted changes. "
+                f"commit or discard rules.en/{name}, then rerun"
+            )
+            continue
+        pair = base_pair(root, name)
+        if isinstance(pair, str):
+            errors.append(pair)
+            continue
+        _commit, prev_ja, prev_en = pair
+        # rules.en/<name> is clean here, so the working tree is the base.
+        en_meta_text = (root / "rules.en" / name / "meta.json").read_text(encoding="utf-8")
+        cursor_stale = json.loads(en_meta_text).get("cursor") != cursor
+        decided.append((name, cursor, ja_lines, (prev_ja, prev_en),
+                        prev_ja == ja_lines, cursor_stale))
+    if errors:
+        for message in errors:
+            print(message, file=sys.stderr)
+        return 1
+
+    # Phase 2: translate the targets in memory; write only when all succeed.
+    planned: list[tuple[Path, str]] = []
+    for name, cursor, ja_lines, base, unchanged, cursor_stale in decided:
+        out_dir = root / "rules.en" / name
+        if unchanged and cursor_stale:
+            # The cursor namespace is copied, never translated: no call.
+            print(f"copying cursor of {name}", flush=True)
+            en_meta = {"description": base[1][0], "cursor": cursor}
+            planned.append((
+                out_dir / "meta.json",
+                json.dumps(en_meta, ensure_ascii=False, indent=2) + "\n",
+            ))
+            continue
+        if unchanged:
+            print(f"unchanged {name}", flush=True)
+            continue
+        print(f"translating {name}", flush=True)
+        try:
+            reference = kept_pairs(base[0], base[1], ja_lines) if base else []
+            output = call_translator(translator, ja_lines, reference, args.timeout)
+            en_lines = check_output(ja_lines, output)
+        except TranslatorFailed as failure:
+            # Nothing has been written yet: planned output stays in memory.
+            print(f"{name}: {failure}. {NEXT_ACTION}", file=sys.stderr)
+            return 1
+        if base is not None:
+            en_lines = splice(base[0], base[1], ja_lines, en_lines)
+        en_meta = {"description": en_lines[0], "cursor": cursor}
+        planned.append((out_dir / "body.md", "\n".join(en_lines[1:]) + "\n"))
+        planned.append((
+            out_dir / "meta.json",
+            json.dumps(en_meta, ensure_ascii=False, indent=2) + "\n",
+        ))
+
+    if not planned:
+        print(f"nothing to translate from rules.ja under {root}; wrote nothing")
+        return 0
+    for path, data in planned:
+        write_atomically(path, data)
+    print(f"wrote {len(planned)} files from rules.ja under {root}")
+    for path, _data in planned:
+        print(path.relative_to(root).as_posix())
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
