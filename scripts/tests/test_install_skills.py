@@ -466,6 +466,73 @@ class InvalidInputTest(unittest.TestCase):
         self.assertEqual(result.stderr, "alpha: name is empty. set name to alpha\n")
         self.assertEqual(home_entries(home), before)
 
+    def test_frontmatter_line_without_a_colon(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        skill = root / "skills.ja" / "alpha"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            "---\nname: alpha\nbroken line\ndescription: A skill.\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+        before = home_entries(home)
+
+        result = run_build(root, home)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr,
+            "alpha: SKILL.md line 3 has no colon. write it as key: value\n",
+        )
+        self.assertEqual(home_entries(home), before)
+
+    def test_frontmatter_without_a_closing_marker(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        skill = root / "skills.ja" / "alpha"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            "---\nname: alpha\ndescription: A skill.\n",
+            encoding="utf-8",
+        )
+        before = home_entries(home)
+
+        result = run_build(root, home)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr,
+            "alpha: SKILL.md frontmatter has no closing ---. "
+            "add --- after the frontmatter\n",
+        )
+        self.assertEqual(home_entries(home), before)
+
+    def test_frontmatter_with_a_duplicate_key(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        skill = root / "skills.ja" / "alpha"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            "---\nname: alpha\ndescription: A skill.\ndescription: Another.\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+        before = home_entries(home)
+
+        result = run_build(root, home)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr,
+            'alpha: duplicate key "description" in SKILL.md. keep one description line\n',
+        )
+        self.assertEqual(home_entries(home), before)
+
     def test_valid_sibling_changes_nothing(self):
         root, home = make_dirs()
         self.addCleanup(shutil.rmtree, root, True)

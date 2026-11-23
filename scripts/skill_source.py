@@ -39,25 +39,26 @@ def parse_skill_md(text: str, name: str) -> SkillMd | str:
     if not lines or lines[0].strip() != "---":
         return f"{name}: missing name. add a non-empty name"
     fields: list[tuple[str, str]] = []
-    seen: dict[str, int] = {}
     end = None
     for index, line in enumerate(lines[1:], start=1):
         if line.strip() == "---":
             end = index
             break
-        if ":" not in line:
+        if not line.strip():
             continue
+        if ":" not in line:
+            return (f"{name}: SKILL.md line {index + 1} has no colon. "
+                    "write it as key: value")
         key, value = line.split(":", 1)
         key, value = key.strip(), value.strip()
-        if key in seen:
-            fields[seen[key]] = (key, value)
-        else:
-            seen[key] = len(fields)
-            fields.append((key, value))
+        if any(key == seen for seen, _value in fields):
+            return (f'{name}: duplicate key "{key}" in SKILL.md. '
+                    f"keep one {key} line")
+        fields.append((key, value))
     if end is None:
-        meta = dict(fields)
-    else:
-        meta = dict(fields)
+        return (f"{name}: SKILL.md frontmatter has no closing ---. "
+                "add --- after the frontmatter")
+    meta = dict(fields)
     name_value = meta.get("name")
     if name_value is None:
         return f"{name}: missing name. add a non-empty name"
@@ -75,5 +76,4 @@ def parse_skill_md(text: str, name: str) -> SkillMd | str:
             f"{name}: description is empty. "
             "set description to a non-empty string"
         )
-    body = "" if end is None else "\n".join(lines[end + 1:])
-    return SkillMd(tuple(fields), body)
+    return SkillMd(tuple(fields), "\n".join(lines[end + 1:]))
