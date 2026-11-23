@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""Link build-rules deliverables into the home rule directories.
+
+The deliverables stay where build-rules writes them: .cursor/rules/<name>.mdc
+and .claude/rules/<name>.md. This script only creates symbolic links.
+"""
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+# Claude first, then Cursor, matching install-skills.
+DESTINATIONS = (
+    (".claude/rules", ".md"),
+    (".cursor/rules", ".mdc"),
+)
+CHECK_NEXT = (
+    "run without --check to install the links; "
+    "conflicting entries must be removed by hand."
+)
+
+
+def rule_stem(filename: str, ext: str) -> str | None:
+    """.mdc must not count as .md."""
+    if ext == ".md" and filename.endswith(".mdc"):
+        return None
+    if not filename.endswith(ext):
+        return None
+    return filename[: -len(ext)]
+
+
+def name_under(root: Path, dest: str, ext: str, target: Path) -> str | None:
+    """Rule name if target is a deliverable directly under this root's dest."""
+    try:
+        relative = target.relative_to(root / dest)
+    except ValueError:
+        return None
+    if len(relative.parts) != 1:
+        return None
+    return rule_stem(relative.parts[0], ext)
+
+
+def name_by_suffix(dest: str, ext: str, target: Path) -> str | None:
+    """Rule name if target ends in <tool>/rules/<name><ext>, any repository."""
+    tool, folder = dest.split("/")
+    parts = target.parts
+    if len(parts) < 3 or parts[-3] != tool or parts[-2] != folder:
+        return None
+    return rule_stem(parts[-1], ext)
+
+
+def owned_rule_name(root: Path, target: Path) -> str | None:
+    """Rule a link points at, including one left behind by a repository move."""
+    for dest, ext in DESTINATIONS:
+        pointed = name_under(root, dest, ext, target)
+        if pointed is not None:
+            return pointed
+    for dest, ext in DESTINATIONS:
+        pointed = name_by_suffix(dest, ext, target)
+        if pointed is not None:
+            return pointed
+    return None
+
+
+def managed_symlink(root: Path, dest: str, ext: str, name: str, link: Path) -> bool:
+    """A symlink this script may repair: it already names a generated rule."""
+    actual = link.readlink()
+    if actual == root / dest / f"{name}{ext}":
+        return True
+    if name_under(root, dest, ext, actual) is not None:
+        return True
+    return name_by_suffix(dest, ext, actual) == name
+
+
+def conflicts(
+    root: Path,
+    home: Path,
+    names: list[str],
+    destinations: tuple[tuple[str, str], ...],
+) -> list[str]:
+    found: list[str] = []
+    for dest, ext in destinations:
+        directory = home / dest
+        if not directory.exists():
+            continue
+        for name in names:
+            link = directory / f"{name}{ext}"
+            if link.is_symlink() and managed_symlink(root, dest, ext, name, link):
+                continue
+            if not link.exists() and not link.is_symlink():
+                continue
+            found.append(
+                f"{name}: conflict at {dest}/{name}{ext}. "
+                "remove the conflicting entry by hand"
+            )
+    return found
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Link .cursor/rules and .claude/rules into the home rule directories.",
+    )
+    parser.add_argument("--root", required=True, help="directory that contains rules.ja")
+    parser.add_argument(
+        "--home",
+        default=str(Path.home()),
+        help="home directory to install into (default: the user's home)",
+    )
+    parser.add_argument(
+        "--tool",
+        action="append",
+        help="install only this tool: cursor or claude (default: both)",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="compare links and write nothing; name any that are missing or differ",
+    )
+    args = parser.parse_args(argv)
+    if args.tool and len(args.tool) > 1:
+        print("tool: --tool was given more than once. pass it once", file=sys.stderr)
+        return 1
+    if args.tool and args.tool[0] not in {"cursor", "claude"}:
+        print(
+            f'tool: unknown tool "{args.tool[0]}". pass --tool cursor or --tool claude',
+            file=sys.stderr,
+        )
+        return 1
+    destinations = DESTINATIONS if not args.tool else tuple(
+        item for item in DESTINATIONS if item[0].startswith(f".{args.tool[0]}/")
+    )
+    root = Path(os.path.abspath(args.root))
+    home = Path(args.home)
+    rules_dir = root / "rules.ja"
+    if not rules_dir.is_dir():
+        print("rules.ja: missing rules.ja. create rules.ja", file=sys.stderr)
+        return 1
+    names = sorted(p.name for p in rules_dir.iterdir() if p.is_dir())
+    missing = [
+        f"{name}: missing {dest}/{name}{ext}. run build-rules"
+        for name in names
+        for dest, ext in destinations
+        if not (root / dest / f"{name}{ext}").is_file()
+    ]
+    if missing:
+        for line in missing:
+            print(line, file=sys.stderr)
+        return 1
+    paths: list[str] = []
+    if args.check:
+        problems: list[str] = []
+        for dest, ext in destinations:
+            directory = home / dest
+            if not directory.exists():
+                problems.append(f"missing: {dest}")
+                continue
+            for name in names:
+                rel = f"{dest}/{name}{ext}"
+                link = directory / f"{name}{ext}"
+                target = root / dest / f"{name}{ext}"
+                if link.is_symlink() and link.readlink() == target:
+                    paths.append(rel)
+                elif not link.exists() and not link.is_symlink():
+                    problems.append(f"missing: {rel}")
+                elif link.is_symlink() and managed_symlink(root, dest, ext, name, link):
+                    problems.append(f"differs: {rel}")
+                else:
+                    problems.append(f"conflict: {rel}")
+        known = set(names)
+        for dest, _ext in destinations:
+            directory = home / dest
+            if not directory.is_dir():
+                continue
+            for entry in sorted(directory.iterdir()):
+                if not entry.is_symlink():
+                    continue
+                pointed = owned_rule_name(root, entry.readlink())
+                if pointed is None or pointed in known:
+                    continue
+                problems.append(f"stale: {dest}/{entry.name}")
+        if problems:
+            print(
+                "links do not match rules.ja. --check changes nothing.",
+                file=sys.stderr,
+            )
+            for line in problems:
+                print(line, file=sys.stderr)
+            print(CHECK_NEXT, file=sys.stderr)
+            return 1
+        print(
+            f"checked {len(paths)} links from rules.ja under {home}; "
+            "all match; wrote nothing"
+        )
+        for path in paths:
+            print(path)
+        return 0
+    found = conflicts(root, home, names, destinations)
+    if found:
+        for line in found:
+            print(line, file=sys.stderr)
+        return 1
+    removed: list[str] = []
+    known = set(names)
+    for dest, _ext in destinations:
+        directory = home / dest
+        if not directory.is_dir():
+            continue
+        for entry in sorted(directory.iterdir()):
+            if not entry.is_symlink():
+                continue
+            pointed = owned_rule_name(root, entry.readlink())
+            if pointed is None or pointed in known:
+                continue
+            entry.unlink()
+            removed.append(f"{dest}/{entry.name}")
+    for name in names:
+        for dest, ext in destinations:
+            target = root / dest / f"{name}{ext}"
+            link = home / dest / f"{name}{ext}"
+            link.parent.mkdir(parents=True, exist_ok=True)
+            if link.is_symlink() and link.readlink() != target:
+                link.unlink()
+            if not link.is_symlink():
+                link.symlink_to(target)
+            paths.append(f"{dest}/{name}{ext}")
+    print(f"installed {len(paths)} files from rules.ja under {home}")
+    for path in paths:
+        print(path)
+    for rel in removed:
+        print(f"removed: {rel}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

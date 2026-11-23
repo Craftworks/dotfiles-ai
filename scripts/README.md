@@ -2,12 +2,13 @@
 
 This README is the specification of the scripts directory.
 
-It holds the scripts that process the canonical sources in `rules.ja/` and `skills.ja/`. `build-rules`, `install-skills`, and `translate-rules` are implemented.
+It holds the scripts that process the canonical sources in `rules.ja/` and `skills.ja/`. `build-rules`, `install-rules`, `install-skills`, and `translate-rules` are implemented.
 
 | Script | Job |
 |---|---|
 | `build-rules` | Deterministically generates the deliverables (Cursor and Claude formats) from the canonical sources |
 | `install-skills` | Installs the skills from the canonical sources into the home skill directories as symbolic links |
+| `install-rules` | Links the deliverables `build-rules` already wrote into the home rule directories |
 | `translate-rules` | Generates the English edition `rules.en/` for publication from the canonical sources |
 
 ## build-rules
@@ -68,7 +69,7 @@ Input/output contract:
 - Running it twice in a row changes nothing on the second run (idempotent)
 - `--tool <cursor|claude>` narrows the run to one destination. `cursor` is `<home>/.cursor/skills`; `claude` is `<home>/.claude/skills`. Omit `--tool` and both destinations are selected, which is every case above. The unselected destination is not part of the run: the script does not create it, does not look inside it, and does not report it. A conflict or a stale link there does not affect the run, and the entries there are identical before and after, including when the run fails. `--tool` with a value other than `cursor` or `claude` exits with `tool: unknown tool "<value>". pass --tool cursor or --tool claude`. `--tool` given more than once exits with `tool: --tool was given more than once. pass it once`. Either error is printed before any destination is read or written, and nothing is changed. The summary still counts skills on a normal run and links on `--check`; with one destination those two numbers are equal, and every path printed is under the selected destination
 
-Non-goals: copying skill files, installing rules (build-rules generates them; their home installation is separate), translation and the English edition of skills, deleting real files or directories, managing plugin skills or claude.ai-synced skills, watch mode, Windows support (symbolic links there need privileges this setup does not assume).
+Non-goals: copying skill files, installing rules (`install-rules` links them), translation and the English edition of skills, deleting real files or directories, managing plugin skills or claude.ai-synced skills, watch mode, Windows support (symbolic links there need privileges this setup does not assume).
 
 Validation and errors:
 
@@ -87,6 +88,37 @@ Done conditions:
 4. On invalid input or any conflict, it exits with an error and changes nothing: no link is created, repaired, or removed
 5. Entries the script does not own — real files and directories, links pointing outside this repository, and `synced/` — are identical before and after every run, including failed runs
 6. With `--tool cursor` or `--tool claude`, only that destination is linked, checked, repaired, or cleaned. The other destination is identical before and after, including when the run fails. An unknown or repeated `--tool` changes nothing
+
+## install-rules
+
+Purpose: link the deliverables `build-rules` already wrote (`.cursor/rules/<name>.mdc` and `.claude/rules/<name>.md`) into the home rule directories (`~/.cursor/rules/` and `~/.claude/rules/`), one symbolic link per file. Installation does not generate those files and does not copy them. They stay under `.cursor/` and `.claude/` in the repository, which is where `build-rules` writes them.
+
+Input/output contract:
+
+- The set of rules is the subdirectories of `rules.ja/`. For each selected destination that rule's deliverable must already exist. A missing deliverable is `<name>: missing <path>. run build-rules`. The run then changes nothing, including when another rule's deliverable is already present. The deliverable files themselves are never modified
+- Link targets are absolute paths under the repository root given by `--root`. If the repository moves, the links break; `--check` reports them and a normal run repairs them
+- The script manages only symbolic links that point at a deliverable under `.cursor/rules/` or `.claude/rules/`. It never creates, overwrites, or deletes a real file or directory, and never touches a link that points elsewhere
+- A destination entry that blocks a rule file — a real file or directory, or a link that does not point at a deliverable — is a conflict. Conflicts are detected before anything is changed: if any selected deliverable is missing or any conflict exists on a selected destination, the run exits with an error and no link is created, repaired, or removed
+- A link at a selected destination that points at a deliverable for a rule no longer in `rules.ja/` is stale. A normal run removes the link; `--check` reports it. Only such links are removed. The deliverable file in the repository is left in place
+- Reporting is part of the contract. A normal run prints `installed <count> files from rules.ja under <home>` followed by the path of every link in place, and one `removed: <path>` line for each stale link it removed. A successful `--check` prints `checked <count> links from rules.ja under <home>; all match; wrote nothing` followed by every path checked. Silent success is a defect: it is indistinguishable from nothing happening
+- A failed `--check` prints `links do not match rules.ja. --check changes nothing.`, one line per problem, and the next action (`run without --check to install the links; conflicting entries must be removed by hand.`) on stderr. Problems are named at the unit the operator acts on: `missing: <path>` when no entry exists, `differs: <path>` when a link points at the wrong deliverable, `stale: <path>` for a link whose rule is gone, `conflict: <path>` for a blocking entry the script must not touch. When a destination directory itself is missing, the directory is named once (`missing: <dir>`) and the links under it are not listed
+- Running it twice in a row changes nothing on the second run (idempotent)
+- `--tool <cursor|claude>` narrows the run to one destination. `cursor` is `<home>/.cursor/rules`; `claude` is `<home>/.claude/rules`. Omit `--tool` and both destinations are selected. The unselected destination is not part of the run: the script does not create it, does not look inside it, and does not report it. A conflict or a stale link there does not affect the run, and a deliverable is required only for a selected destination. `--tool` with a value other than `cursor` or `claude` exits with `tool: unknown tool "<value>". pass --tool cursor or --tool claude`. `--tool` given more than once exits with `tool: --tool was given more than once. pass it once`. Either error is printed before anything is read or written, and nothing is changed. A normal run counts files and `--check` counts links; with one destination those two numbers are equal, and every path printed is under the selected destination
+
+Non-goals: generating the deliverables (`build-rules` does that), copying bytes into the home directory, deleting real files or directories, deleting deliverables from the repository, translation, watch mode, Windows support (symbolic links there need privileges this setup does not assume).
+
+Implementation: Python 3, standard library only, a single file (no extension). The command line is `install-rules --root <repository root> [--home <home directory>] [--tool <cursor|claude>] [--check]`; `--home` defaults to the user's home directory and exists so tests can install into a temporary home. macOS is the target platform.
+
+Tests: built test-first, in the style of the install-skills tests (the script is invoked as a subprocess against temporary `--root` and `--home` directories). Cases: a fresh install links every deliverable at both destinations with an absolute target, and reading the link returns the deliverable's bytes; a relative `--root` still produces an absolute target; a second run changes nothing; `--check` passes on the installed state and fails, naming the path, for a missing link, a wrong-target link, a stale link, and a conflict, and names the directory alone when a destination directory is missing; a normal run removes a stale link and leaves the repository deliverable in place, and repairs a link broken by moving the repository; a conflict blocks the whole run and nothing is linked, repaired, or removed; a missing `rules.ja` and a missing deliverable (including one rule missing its file while a sibling is complete) exit with an error and change nothing; a real file whose name is not a rule is unchanged; and `--tool` cases (cursor only and claude only each link just that destination, cursor does not require the Claude deliverable, a conflict or stale link on the unselected side does not block and stays, repair and stale removal apply only to the selected side, `--check` names only the selected destination, and an unknown or repeated `--tool` exits with the sentence above and changes nothing).
+
+Done conditions:
+
+1. Into an empty home, with `--tool` omitted, every rule in `rules.ja` is linked at both destinations, and every link resolves to that rule's deliverable in the repository
+2. Running it twice in a row creates, repairs, and removes nothing on the second run
+3. `--check` exits successfully on the installed state, and exits with an error naming the path when a link is missing, points at the wrong deliverable, or is stale, when a blocking entry conflicts, and naming the directory alone when a destination directory itself is missing
+4. On a missing `rules.ja`, a missing deliverable, or any conflict, it exits with an error and changes nothing: no link is created, repaired, or removed, and no deliverable is modified
+5. Entries the script does not own — real files and directories, and links that do not point at a deliverable — are identical before and after every run, including failed runs
+6. With `--tool cursor` or `--tool claude`, only that destination is linked, checked, repaired, or cleaned, and only that destination's deliverable is required. The other destination is identical before and after, including when the run fails. An unknown or repeated `--tool` changes nothing
 
 ## translate-rules
 
