@@ -22,7 +22,9 @@ dotfiles-ai/
 ├── README.md              # 英語版
 ├── README.ja.md           # 本ファイル（日本語版）
 ├── rules.ja/              # ルールの正本：ルールごとに1ディレクトリ（body.md、meta.json）
+├── rules.en/              # ルールの英語版（翻訳で生成）
 ├── skills.ja/             # スキルの正本：スキルごとに1ディレクトリ（SKILL.md）
+├── skills.en/             # スキルの英語版（翻訳で生成）
 ├── scripts/               # 正本を処理する生成スクリプト（仕様は同所の README）
 ├── .cursor/
 │   └── rules/             # Cursor ルール（.mdc）と、その索引 README.md
@@ -32,7 +34,7 @@ dotfiles-ai/
 ## 原則の共有方法
 
 - **スキル**は Agent Skills 標準（`SKILL.md`）で3者にそのまま共有できる。Claude Code は `~/.claude/skills/`、Cursor は `~/.cursor/skills/` のほか互換パスとして `~/.claude/skills/` も読む
-- **ルール**は形式がプラットフォームごとに異なる（Cursor は `.mdc`、Claude Code は `CLAUDE.md` と `paths:` つきルール、muse は素の Markdown）。正本は `rules.ja/` に置く：ルールごとに `body.md`（本文）と `meta.json`（description と、プラットフォーム固有項目を名前空間に分けたもの）に分離している。各形式への生成は `scripts/build-rules` が正本から行い、そのファイルのホームへのリンクは `scripts/install-rules` が行い、スキルのインストールは `scripts/install-skills` が行う。ルールとスキルはホームディレクトリへのインストール（`~/.claude/rules/`、`~/.cursor/rules/`、`~/.claude/skills/`、`~/.cursor/skills/`）から効き、このリポジトリは正本とスクリプトだけを持ち、プロジェクトレベルのルールやスキルは持たない。編集は正本に対して行い、生成物やインストール済みのファイルは編集しない。公開用の英語版 `rules.en/` と `skills.en/` は `scripts/translate-rules` と `scripts/translate-skills` が生成し、正本は日本語のままにする
+- **ルール**は形式がプラットフォームごとに異なる（Cursor は `.mdc`、Claude Code は `CLAUDE.md` と `paths:` つきルール、muse は素の Markdown）。正本は `rules.ja/` に置く：ルールごとに `body.md`（本文）と `meta.json`（description と、プラットフォーム固有項目を名前空間に分けたもの）に分離している。各形式への生成は `scripts/build-rules` が正本から行い、そのファイルのホームへのリンクは `scripts/install-rules` が行い、スキルのインストールは `scripts/install-skills` が行う。ルールとスキルはホームディレクトリへのインストール（`~/.claude/rules/`、`~/.cursor/rules/`、`~/.claude/skills/`、`~/.cursor/skills/`）から効き、このリポジトリは正本とスクリプトだけを持ち、プロジェクトレベルのルールやスキルは持たない。編集は正本に対して行い、生成物やインストール済みのファイルは編集しない。英語版などの他言語版（`rules.en/` と `skills.en/`）は `scripts/translate-rules` と `scripts/translate-skills` が正本から生成し、正本は日本語のままにする。`scripts/build-rules` と配置スクリプトは `--lang`（既定は `en`）を取り、読む人は自分の言語の版を生成・配置できる
 
 ## 運用原則
 
