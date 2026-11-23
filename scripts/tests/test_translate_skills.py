@@ -59,6 +59,7 @@ SKILL_EN = (
 DICTIONARY = {
     "サンプルの説明": "A sample description",
     "- 一つ目の項目": "- The first item",
+    "echo そのまま": "echo as-is",
 }
 
 
@@ -141,7 +142,7 @@ class NewSkillTest(unittest.TestCase):
 
 
 class FenceAndCopyTest(unittest.TestCase):
-    def test_fence_interiors_are_not_sent_and_basis_is_omitted(self):
+    def test_fence_interiors_are_translated_and_basis_is_omitted(self):
         repo = Repo(self)
         repo.write("skills.ja/sample/SKILL.md", SKILL)
         repo.write(
@@ -158,10 +159,11 @@ class FenceAndCopyTest(unittest.TestCase):
         self.assertFalse((repo.root / "skills.en" / "sample" / "basis.md").exists())
         self.assertEqual(repo.read("skills.en/sample/scripts/run.sh"), "echo hello\n")
         notes = repo.read("skills.en/sample/notes.md")
-        self.assertIn("echo そのまま\n", notes)
+        self.assertIn("echo as-is\n", notes)
+        self.assertNotIn("そのまま", notes)
         requests = [call["request"] for call in repo.calls()]
         bodies = [line for request in requests for line in request["body"]]
-        self.assertNotIn("echo そのまま", bodies)
+        self.assertIn("echo そのまま", bodies)
         self.assertIn("```bash", bodies)
 
 

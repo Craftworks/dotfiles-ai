@@ -2,7 +2,8 @@
 """Generate the English edition skills.en from skills.ja.
 
 One translator call is one Markdown file, the same call translate-rules
-makes. Several files run at once (--jobs, default 4). basis.md is not
+makes. Several files run at once (--jobs, default 4). Every line of the
+file is sent, including a line inside a code fence. basis.md is not
 part of the edition. Anything that is not Markdown is copied.
 """
 
@@ -65,32 +66,6 @@ def show(root: Path, commit: str, rel: str) -> str | None:
         return None
 
 
-def fence_mask(lines: list[str]) -> list[bool]:
-    """True for a line inside a code fence. The fence markers themselves are
-    sent to the translator; the interior is not, and is copied back."""
-    inside = False
-    mask: list[bool] = []
-    for line in lines:
-        if line.strip().startswith("```"):
-            mask.append(False)
-            inside = not inside
-        else:
-            mask.append(inside)
-    return mask
-
-
-def expand(lines: list[str], mask: list[bool], sent: list[str]) -> list[str]:
-    result: list[str] = []
-    index = 0
-    for line, interior in zip(lines, mask):
-        if interior:
-            result.append(line)
-        else:
-            result.append(sent[index])
-            index += 1
-    return result
-
-
 def skill_lines(skill: SkillMd) -> list[str]:
     body = skill.body.split("\n") if skill.body else []
     return [skill.description, *body]
@@ -120,24 +95,18 @@ class MarkdownTarget:
         self.skill = skill
 
     def translate(self, translator: str, timeout: float) -> str:
-        mask = fence_mask(self.lines[1:] if self.skill else self.lines)
         if self.skill:
-            sent_body = [line for line, interior in zip(self.lines[1:], mask) if not interior]
-            request = [self.lines[0], *sent_body]
+            request = self.lines
         else:
-            sent_body = [line for line, interior in zip(self.lines, mask) if not interior]
-            request = ["", *sent_body]
+            request = ["", *self.lines]
         reference = []
         if self.base is not None:
             reference = kept_pairs(self.base[0], self.base[1], self.lines)
         output = call_translator(translator, request, reference, timeout)
         if self.skill:
-            checked = check_output(request, output)
-            body = expand(self.lines[1:], mask, checked[1:])
-            new_lines = [checked[0], *body]
+            new_lines = check_output(request, output)
         else:
-            body = expand(self.lines, mask, check_body(sent_body, output))
-            new_lines = body
+            new_lines = check_body(self.lines, output)
         if self.base is not None:
             new_lines = splice(self.base[0], self.base[1], self.lines, new_lines)
         if self.skill:
