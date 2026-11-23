@@ -1,6 +1,6 @@
-# Test specification for build-skills.
+# Test specification for install-skills.
 #
-# The public seam is the build-skills command: exit code, stdout, stderr,
+# The public seam is the install-skills command: exit code, stdout, stderr,
 # and the symbolic links under --home. One behavior per test.
 
 import os
@@ -13,7 +13,7 @@ from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parents[1]
-SCRIPT = REPO_ROOT / "scripts" / "build-skills"
+SCRIPT = REPO_ROOT / "scripts" / "install-skills"
 DESTINATIONS = (".claude/skills", ".cursor/skills")
 
 
@@ -25,8 +25,8 @@ def run_build(root: Path, home: Path, *extra: str) -> subprocess.CompletedProces
 
 
 def make_dirs() -> tuple[Path, Path]:
-    root = Path(tempfile.mkdtemp(prefix="build-skills-test-"))
-    home = Path(tempfile.mkdtemp(prefix="build-skills-home-"))
+    root = Path(tempfile.mkdtemp(prefix="install-skills-test-"))
+    home = Path(tempfile.mkdtemp(prefix="install-skills-home-"))
     return root, home
 
 
@@ -272,7 +272,7 @@ class CheckModeTest(unittest.TestCase):
 
     def test_check_names_a_foreign_symlink_as_a_conflict(self):
         root, home = make_dirs()
-        outside = Path(tempfile.mkdtemp(prefix="build-skills-outside-"))
+        outside = Path(tempfile.mkdtemp(prefix="install-skills-outside-"))
         self.addCleanup(shutil.rmtree, root, True)
         self.addCleanup(shutil.rmtree, home, True)
         self.addCleanup(shutil.rmtree, outside, True)
@@ -511,7 +511,7 @@ class ExtraFrontmatterTest(unittest.TestCase):
 class UnownedEntriesTest(unittest.TestCase):
     def setUp(self):
         self.root, self.home = make_dirs()
-        self.outside = Path(tempfile.mkdtemp(prefix="build-skills-outside-"))
+        self.outside = Path(tempfile.mkdtemp(prefix="install-skills-outside-"))
         self.addCleanup(shutil.rmtree, self.root, True)
         self.addCleanup(shutil.rmtree, self.home, True)
         self.addCleanup(shutil.rmtree, self.outside, True)
@@ -555,7 +555,7 @@ class UnownedEntriesTest(unittest.TestCase):
 
 class RealSkillsTest(unittest.TestCase):
     def test_real_skills_link_into_a_temporary_home(self):
-        home = Path(tempfile.mkdtemp(prefix="build-skills-home-"))
+        home = Path(tempfile.mkdtemp(prefix="install-skills-home-"))
         self.addCleanup(shutil.rmtree, home, True)
         names = sorted(
             p.name for p in (REPO_ROOT / "skills.ja").iterdir() if p.is_dir()
@@ -680,7 +680,7 @@ class NormalRunTest(unittest.TestCase):
 
     def test_foreign_symlink_is_a_conflict_and_changes_nothing(self):
         root, home = make_dirs()
-        outside = Path(tempfile.mkdtemp(prefix="build-skills-outside-"))
+        outside = Path(tempfile.mkdtemp(prefix="install-skills-outside-"))
         self.addCleanup(shutil.rmtree, root, True)
         self.addCleanup(shutil.rmtree, home, True)
         self.addCleanup(shutil.rmtree, outside, True)
