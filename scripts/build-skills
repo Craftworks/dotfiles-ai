@@ -2,6 +2,7 @@
 """Install skills.ja into the home skill directories as symbolic links."""
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -150,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     destinations = DESTINATIONS if not args.tool else (f".{args.tool[0]}/skills",)
-    root = Path(args.root)
+    root = Path(os.path.abspath(args.root))
     home = Path(args.home)
     skills_dir = root / "skills.ja"
     if not skills_dir.is_dir():

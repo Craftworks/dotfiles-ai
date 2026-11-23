@@ -84,6 +84,24 @@ class FreshInstallTest(unittest.TestCase):
                 self.assertEqual(link.readlink(), target)
                 self.assertEqual((link / "notes.md").read_text(encoding="utf-8"), "aux\n")
 
+    def test_relative_root_still_links_with_an_absolute_target(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "alpha")
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--root", ".", "--home", str(home)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+
+        link = home / ".claude" / "skills" / "alpha"
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue(link.readlink().is_absolute(), msg=link.readlink())
+        self.assertEqual((link / "notes.md").read_text(encoding="utf-8"), "aux\n")
+
 
 def home_entries(home: Path) -> dict:
     entries = {}
