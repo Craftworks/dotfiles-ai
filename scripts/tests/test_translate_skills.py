@@ -184,6 +184,28 @@ class HistoryTest(unittest.TestCase):
             f"nothing to translate from skills.ja under {repo.root}; wrote nothing\n",
         )
 
+    def test_the_count_line_comes_first_when_a_file_is_translated(self):
+        repo = Repo(self)
+        repo.write("skills.ja/alpha/SKILL.md", SKILL.replace("name: sample", "name: alpha"))
+        repo.write("skills.en/alpha/SKILL.md", SKILL_EN.replace("name: sample", "name: alpha"))
+        repo.write("skills.ja/sample/SKILL.md", SKILL)
+        repo.write("skills.ja/sample/scripts/run.sh", "echo hello\n")
+        repo.commit()
+
+        result = repo.run()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            result.stdout,
+            "translating 1 file, 1 at a time\n"
+            "unchanged alpha/SKILL.md\n"
+            "copying sample/scripts/run.sh\n"
+            "translating sample/SKILL.md\n"
+            f"wrote 2 files from skills.ja under {repo.root}\n"
+            "skills.en/sample/SKILL.md\n"
+            "skills.en/sample/scripts/run.sh\n",
+        )
+
     def test_an_unchanged_line_keeps_its_english_and_the_old_line_is_hidden(self):
         repo = Repo(self)
         repo.write("skills.ja/sample/SKILL.md", SKILL)

@@ -232,15 +232,16 @@ def main(argv: list[str] | None = None) -> int:
             print(message, file=sys.stderr)
         return 1
 
+    jobs = min(args.jobs, len(targets))
+    if targets:
+        noun = "file" if len(targets) == 1 else "files"
+        say(f"translating {len(targets)} {noun}, {jobs} at a time")
     for rel in unchanged:
         say(f"unchanged {rel}")
     for rel, _data in copies:
         say(f"copying {rel}")
     planned: list[tuple[str, str]] = []
     if targets:
-        jobs = min(args.jobs, len(targets))
-        noun = "file" if len(targets) == 1 else "files"
-        say(f"translating {len(targets)} {noun}, {jobs} at a time")
         error: dict[str, str] = {}
         error_lock = threading.Lock()
 

@@ -174,7 +174,7 @@ Non-goals: installing `skills.en/`, translating `basis.md`, one request that hol
 
 Implementation: Python 3, standard library only. The command line is `translate-skills --root <repository root> [--translator <command>] [--timeout <seconds>] [--jobs <n>] [<name>...]`. `--jobs` below 1 exits with `jobs: --jobs must be at least 1. pass --jobs 4` and changes nothing.
 
-Tests: a subprocess against a temporary git repository and a fake `--translator`. The real `claude` is not called. Cases: a new `SKILL.md` keeps `name` and translates `description` and the body; a fence interior is in the request and translated in the output, `basis.md` is omitted, and a shell script is copied; an unchanged skill makes no call; a changed line is new and the old English of that line is not in the prompt; two calls overlap under `--jobs 2`, and a failing call writes nothing; `--jobs 0` and a missing `SKILL.md` make no call.
+Tests: a subprocess against a temporary git repository and a fake `--translator`. The real `claude` is not called. Cases: a new `SKILL.md` keeps `name` and translates `description` and the body; a fence interior is in the request and translated in the output, `basis.md` is omitted, and a shell script is copied; an unchanged skill makes no call; when a file is translated, the count line comes before the `unchanged` and `copying` lines; a changed line is new and the old English of that line is not in the prompt; two calls overlap under `--jobs 2`, and a failing call writes nothing; `--jobs 0` and a missing `SKILL.md` make no call.
 
 ## How this specification is kept
 
