@@ -28,15 +28,6 @@ def main(argv: list[str] | None = None) -> int:
     missing_dirs: list[str] = []
     if args.check:
         missing_dirs = [rel for rel in output_dirs if not (root / rel).is_dir()]
-        if len(missing_dirs) == len(output_dirs):
-            print(
-                "output directory does not exist. --check writes nothing.",
-                file=sys.stderr,
-            )
-            for rel in missing_dirs:
-                print(f"missing: {rel}", file=sys.stderr)
-            print("run without --check to write them.", file=sys.stderr)
-            return 1
     rules_dir = root / "rules.ja"
     if not rules_dir.is_dir():
         print(MISSING_RULES_JA, file=sys.stderr)

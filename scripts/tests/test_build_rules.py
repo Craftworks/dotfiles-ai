@@ -201,6 +201,24 @@ class CheckModeTest(unittest.TestCase):
         self.assertFalse((root / ".cursor").exists(), msg="--check created .cursor")
         self.assertFalse((root / ".claude").exists(), msg="--check created .claude")
 
+    def test_check_names_a_missing_rules_ja_when_outputs_are_missing(self):
+        root = Path(tempfile.mkdtemp(prefix="build-rules-test-"))
+        ng = run_build(root, "--check")
+        self.assertNotEqual(ng.returncode, 0)
+        self.assertEqual(ng.stdout, "")
+        self.assertEqual(ng.stderr, "rules.ja: missing rules.ja. create rules.ja\n")
+        self.assertFalse((root / ".cursor").exists())
+        self.assertFalse((root / ".claude").exists())
+
+    def test_check_names_an_invalid_rule_when_outputs_are_missing(self):
+        root = make_root(FIXTURES / "invalid" / "missing-body")
+        ng = run_build(root, "--check")
+        self.assertNotEqual(ng.returncode, 0)
+        self.assertEqual(ng.stdout, "")
+        self.assertEqual(ng.stderr, "sample-x: missing body.md. create body.md\n")
+        self.assertFalse((root / ".cursor").exists())
+        self.assertFalse((root / ".claude").exists())
+
     def test_check_fails_when_output_directories_are_empty(self):
         root = make_root(FIXTURES / "auto")
         (root / ".cursor" / "rules").mkdir(parents=True)
