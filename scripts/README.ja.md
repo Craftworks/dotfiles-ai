@@ -2,7 +2,7 @@
 
 この README は scripts ディレクトリの仕様書である。
 
-`rules.ja/` と `skills.ja/` の正本を処理するスクリプトを置く。`build-rules` は実装済み。`build-skills` と `translate-rules` は未実装（設計のみ）。
+`rules.ja/` と `skills.ja/` の正本を処理するスクリプトを置く。`build-rules` と `build-skills` は実装済み。`translate-rules` は未実装（設計のみ）。
 
 | スクリプト | 仕事 |
 |---|---|

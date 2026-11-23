@@ -2,7 +2,7 @@
 
 This README is the specification of the scripts directory.
 
-It holds the scripts that process the canonical sources in `rules.ja/` and `skills.ja/`. `build-rules` is implemented. `build-skills` and `translate-rules` are currently unimplemented (design only).
+It holds the scripts that process the canonical sources in `rules.ja/` and `skills.ja/`. `build-rules` and `build-skills` are implemented. `translate-rules` is currently unimplemented (design only).
 
 | Script | Job |
 |---|---|

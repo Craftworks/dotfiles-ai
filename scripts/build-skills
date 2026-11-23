@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""Install skills.ja into the home skill directories as symbolic links."""
+
+import argparse
+import sys
+from pathlib import Path
+
+DESTINATIONS = (".claude/skills", ".cursor/skills")
+CHECK_NEXT = (
+    "run without --check to install the links; "
+    "conflicting entries must be removed by hand."
+)
+
+
+def managed_symlink(root: Path, skill: str, link: Path) -> bool:
+    """A symlink this script may repair: it already names a skills.ja skill."""
+    actual = link.readlink()
+    if actual == root / "skills.ja" / skill:
+        return True
+    if skill_target_name(root, actual) is not None:
+        return True
+    parts = actual.parts
+    return len(parts) >= 2 and parts[-2] == "skills.ja" and parts[-1] == skill
+
+
+def conflicts(root: Path, home: Path, skills: list[Path]) -> list[str]:
+    found: list[str] = []
+    for dest in DESTINATIONS:
+        directory = home / dest
+        if not directory.exists():
+            continue
+        for skill in skills:
+            link = directory / skill.name
+            if link.is_symlink() and managed_symlink(root, skill.name, link):
+                continue
+            if not link.exists() and not link.is_symlink():
+                continue
+            found.append(
+                f"{skill.name}: conflict at {dest}/{skill.name}. "
+                "remove the conflicting entry by hand"
+            )
+    return found
+
+
+def frontmatter(path: Path) -> dict[str, str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    meta: dict[str, str] = {}
+    if not lines or lines[0].strip() != "---":
+        return meta
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        meta[key.strip()] = value.strip()
+    return meta
+
+
+def validate(skills: list[Path]) -> list[str]:
+    errors: list[str] = []
+    for skill in skills:
+        if skill.name.casefold() == "synced":
+            errors.append(
+                f'{skill.name}: name "{skill.name}" is reserved. rename the skill'
+            )
+            continue
+        skill_md = skill / "SKILL.md"
+        if not skill_md.is_file():
+            errors.append(f"{skill.name}: missing SKILL.md. create SKILL.md")
+            continue
+        meta = frontmatter(skill_md)
+        name = meta.get("name")
+        if name is None:
+            errors.append(f"{skill.name}: missing name. add a non-empty name")
+            continue
+        if name == "":
+            errors.append(f"{skill.name}: name is empty. set name to {skill.name}")
+            continue
+        if name != skill.name:
+            errors.append(
+                f'{skill.name}: name "{name}" does not match the directory. '
+                f"set name to {skill.name}"
+            )
+            continue
+        if "description" not in meta:
+            errors.append(
+                f"{skill.name}: missing description. add a non-empty description"
+            )
+            continue
+        if meta["description"] == "":
+            errors.append(
+                f"{skill.name}: description is empty. "
+                "set description to a non-empty string"
+            )
+    return errors
+
+
+def skill_target_name(root: Path, target: Path) -> str | None:
+    """Return the skill name if target points into this root's skills.ja."""
+    try:
+        relative = target.relative_to(root / "skills.ja")
+    except ValueError:
+        return None
+    if not relative.parts:
+        return None
+    return relative.parts[0]
+
+
+def owned_skill_name(root: Path, target: Path) -> str | None:
+    """Skill name for a link this repository owns, including one left by a move."""
+    pointed = skill_target_name(root, target)
+    if pointed is not None:
+        return pointed
+    parts = target.parts
+    if len(parts) >= 2 and parts[-2] == "skills.ja":
+        return parts[-1]
+    return None
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Link skills.ja into the home skill directories.",
+    )
+    parser.add_argument("--root", required=True, help="directory that contains skills.ja")
+    parser.add_argument(
+        "--home",
+        default=str(Path.home()),
+        help="home directory to install into (default: the user's home)",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="compare links and write nothing; name any that are missing or differ",
+    )
+    args = parser.parse_args(argv)
+    root = Path(args.root)
+    home = Path(args.home)
+    skills_dir = root / "skills.ja"
+    if not skills_dir.is_dir():
+        print("skills.ja: missing skills.ja. create skills.ja", file=sys.stderr)
+        return 1
+    skills = sorted(p for p in skills_dir.iterdir() if p.is_dir())
+    errors = validate(skills)
+    if errors:
+        for line in errors:
+            print(line, file=sys.stderr)
+        return 1
+    paths: list[str] = []
+    if args.check:
+        problems: list[str] = []
+        for dest in DESTINATIONS:
+            directory = home / dest
+            if not directory.exists():
+                problems.append(f"missing: {dest}")
+                continue
+            for skill in skills:
+                rel = f"{dest}/{skill.name}"
+                link = directory / skill.name
+                target = root / "skills.ja" / skill.name
+                if link.is_symlink() and link.readlink() == target:
+                    paths.append(rel)
+                elif not link.exists() and not link.is_symlink():
+                    problems.append(f"missing: {rel}")
+                elif link.is_symlink() and managed_symlink(root, skill.name, link):
+                    problems.append(f"differs: {rel}")
+                elif link.is_symlink():
+                    problems.append(f"conflict: {rel}")
+                else:
+                    problems.append(f"conflict: {rel}")
+        names = {skill.name for skill in skills}
+        for dest in DESTINATIONS:
+            directory = home / dest
+            if not directory.is_dir():
+                continue
+            for entry in sorted(directory.iterdir()):
+                if not entry.is_symlink():
+                    continue
+                pointed = owned_skill_name(root, entry.readlink())
+                if pointed is None or pointed in names:
+                    continue
+                problems.append(f"stale: {dest}/{entry.name}")
+        if problems:
+            print(
+                "links do not match skills.ja. --check changes nothing.",
+                file=sys.stderr,
+            )
+            for line in problems:
+                print(line, file=sys.stderr)
+            print(CHECK_NEXT, file=sys.stderr)
+            return 1
+        print(
+            f"checked {len(paths)} links from skills.ja under {home}; "
+            "all match; wrote nothing"
+        )
+        for path in paths:
+            print(path)
+        return 0
+    found = conflicts(root, home, skills)
+    if found:
+        for line in found:
+            print(line, file=sys.stderr)
+        return 1
+    removed: list[str] = []
+    names = {skill.name for skill in skills}
+    for dest in DESTINATIONS:
+        directory = home / dest
+        if not directory.is_dir():
+            continue
+        for entry in sorted(directory.iterdir()):
+            if not entry.is_symlink():
+                continue
+            pointed = owned_skill_name(root, entry.readlink())
+            if pointed is None or pointed in names:
+                continue
+            entry.unlink()
+            removed.append(f"{dest}/{entry.name}")
+    for skill in skills:
+        target = root / "skills.ja" / skill.name
+        for dest in DESTINATIONS:
+            link = home / dest / skill.name
+            link.parent.mkdir(parents=True, exist_ok=True)
+            if link.is_symlink() and link.readlink() != target:
+                link.unlink()
+            if not link.is_symlink():
+                link.symlink_to(target)
+            paths.append(f"{dest}/{skill.name}")
+    print(f"installed {len(skills)} skills from skills.ja under {home}")
+    for path in paths:
+        print(path)
+    for rel in removed:
+        print(f"removed: {rel}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
