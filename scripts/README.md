@@ -19,7 +19,7 @@ Input/output contract:
 - Generated files carry no marker header. Drift from the canonical sources is detected by `--check`, not by text inside the file
 - `--check` writes nothing; it only verifies that the generated files match the canonical sources, and exits with an error naming any file that has drifted
 - Reporting is part of the contract. A normal run prints what it did on stdout: a summary line (`wrote <count> files from rules.ja under <root>`) followed by the path of every file written. A successful `--check` prints `checked <count> files from rules.ja under <root>; all match; wrote nothing` followed by every path checked. Silent success is a defect: it is indistinguishable from nothing happening
-- A failed `--check` prints a summary line, one line per problem, and the next action (`run without --check to write them.`) on stderr. A differing or missing file is named individually (`differs: <path>`, `missing: <path>`); when a whole output directory is missing or empty, the directory is named once (`missing: <dir>`, `empty: <dir>`) and the files under it are not listed. Problems are reported at the unit the operator acts on
+- A failed `--check` prints a summary line, one line per problem, and the next action (`run without --check to write them.`) on stderr. A differing or missing file is named individually (`differs: <path>`, `missing: <path>`); when a whole output directory is missing or empty, the directory is named once (`missing: <dir>`, `empty: <dir>`) and the files under it are not listed. Empty means the directory has no entries. A directory that exists and contains anything, including an unrelated file, is not empty: each missing deliverable is named with `missing: <path>`. Problems are reported at the unit the operator acts on
 
 Non-goals: translation, installation into the home directory, git operations, watch mode, incremental processing.
 
@@ -35,18 +35,19 @@ Note: Claude Code's rule loading reads only `paths` in frontmatter; it does not 
 
 Validation and errors:
 
-- All rules are validated first (required keys, types, and unknown keys in meta.json; existence of body.md). Writing starts only after every rule passes. If any rule is invalid, the script exits with an error and no output files are written
-- Error messages take the form: rule name, cause, next action. The exit code reports success or failure
+- All rules are validated first. `meta.json` must be an object with a string `description` and an object `cursor`. Unknown keys are rejected at the top level and inside `cursor`. `cursor.globs`, when present, is a string or null; null means no globs. `cursor.alwaysApply`, when present, is a boolean. `body.md` must exist. Writing starts only after every rule passes. If any rule is invalid, the script exits with an error and no output files are written
+- If `rules.ja` itself is missing, the script exits with an error and writes nothing
+- Error messages take the form: rule name, cause, next action. A missing `rules.ja` is named `rules.ja` in that same form. The exit code reports success or failure
 
 Implementation: Python 3, standard library only, a single file (no extension). JSON is read with the standard `json` module. Frontmatter values are emitted as unquoted plain scalars, with keys ordered description, globs, alwaysApply, matching the current .mdc files. It must run on both Mac and Windows.
 
-Tests: built test-first. Golden-file comparison on three fixtures (alwaysApply / globs / description only); a regression run over a frozen snapshot of the real rules (inputs and expected outputs captured on 2026-11-21 under `scripts/tests/fixtures/real/` — the snapshot is the oracle, never the live outputs); assertions on the output reporting (what a run says it wrote or checked); `--check` cases (clean, tampered, missing files, missing or empty output directories); and error cases (missing file, invalid JSON, unknown key, and a mix of valid and invalid rules — verifying that nothing is written).
+Tests: built test-first. Golden-file comparison on three fixtures (alwaysApply / globs / description only); a regression run over a frozen snapshot of the real rules (inputs and expected outputs captured on 2026-11-21 under `scripts/tests/fixtures/real/` — the snapshot is the oracle, never the live outputs); assertions on the output reporting (the full summary line and every path a run says it wrote or checked); `--check` cases (clean, tampered, one missing file while a sibling remains, missing or empty output directories, and a directory that contains only unrelated files); and error cases (missing file, invalid JSON, unknown key, `meta.json` that is not an object, `description` missing or not a string, `cursor` missing or not an object, an unknown key under `cursor`, `globs` that is not a string, `alwaysApply` that is not a boolean, a missing `rules.ja` directory, and a mix of valid and invalid rules — verifying that nothing is written).
 
 Done conditions:
 
 1. Against the frozen snapshot of the real rules, the generated files match the expected outputs byte for byte
 2. Running it twice in a row produces zero diff on the second run
-3. `--check` exits successfully when the outputs match the canonical sources, and exits with an error when a generated file has been edited by hand, a file is missing, or an output directory is missing or empty — naming the drifted file, or the directory alone when the whole directory is the problem
+3. `--check` exits successfully when the outputs match the canonical sources, and exits with an error when a generated file has been edited by hand, a file is missing, or an output directory is missing or empty — naming the drifted file, or the directory alone when the directory itself is missing or has no entries. A directory that still contains an unrelated file is not that case: each missing deliverable is named
 4. On invalid input it exits with an error and writes no output files at all
 5. On a fixture with globs, the Claude format carries a correct `paths` frontmatter
 
