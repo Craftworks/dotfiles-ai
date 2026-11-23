@@ -37,6 +37,9 @@ def main(argv: list[str] | None = None) -> int:
             print("run without --check to write them.", file=sys.stderr)
             return 1
     rules_dir = root / "rules.ja"
+    if not rules_dir.is_dir():
+        print("rules.ja: missing rules.ja. create rules.ja", file=sys.stderr)
+        return 1
     errors: list[str] = []
     planned: list[tuple[Path, bytes]] = []
     for rule_dir in sorted(p for p in rules_dir.iterdir() if p.is_dir()):
@@ -51,6 +54,12 @@ def main(argv: list[str] | None = None) -> int:
                 f"{rule_dir.name}: invalid JSON in meta.json. fix meta.json"
             )
             continue
+        if not isinstance(meta, dict):
+            errors.append(
+                f"{rule_dir.name}: meta.json is not an object. "
+                "replace meta.json with an object"
+            )
+            continue
         unknown = [key for key in meta if key not in {"description", "cursor"}]
         if unknown:
             key = unknown[0]
@@ -59,13 +68,52 @@ def main(argv: list[str] | None = None) -> int:
                 "remove the unknown key or extend the schema"
             )
             continue
+        if "description" not in meta:
+            errors.append(
+                f"{rule_dir.name}: missing description. add a string description"
+            )
+            continue
+        if not isinstance(meta["description"], str):
+            errors.append(
+                f"{rule_dir.name}: description is not a string. "
+                "set description to a string"
+            )
+            continue
+        if "cursor" not in meta:
+            errors.append(f"{rule_dir.name}: missing cursor. add a cursor object")
+            continue
+        cursor = meta["cursor"]
+        if not isinstance(cursor, dict):
+            errors.append(
+                f"{rule_dir.name}: cursor is not an object. set cursor to an object"
+            )
+            continue
+        cursor_unknown = [key for key in cursor if key not in {"globs", "alwaysApply"}]
+        if cursor_unknown:
+            key = cursor_unknown[0]
+            errors.append(
+                f'{rule_dir.name}: unknown key "{key}" in cursor. '
+                "remove the unknown key or extend the schema"
+            )
+            continue
+        globs = cursor.get("globs")
+        if "globs" in cursor and globs is not None and not isinstance(globs, str):
+            errors.append(
+                f"{rule_dir.name}: globs is not a string. "
+                "set globs to a string or null"
+            )
+            continue
+        if "alwaysApply" in cursor and not isinstance(cursor["alwaysApply"], bool):
+            errors.append(
+                f"{rule_dir.name}: alwaysApply is not a boolean. "
+                "set alwaysApply to true or false"
+            )
+            continue
         body_path = rule_dir / "body.md"
         if not body_path.is_file():
             errors.append(f"{rule_dir.name}: missing body.md. create body.md")
             continue
         body = body_path.read_bytes()
-        cursor = meta["cursor"]
-        globs = cursor.get("globs")
         lines = ["---", f"description: {meta['description']}"]
         if globs:
             lines.append(f"globs: {globs}")
@@ -89,16 +137,16 @@ def main(argv: list[str] | None = None) -> int:
         for message in errors:
             print(message, file=sys.stderr)
         return 1
-    drifted: list[str] = []
+    problems: list[str] = []
     empty_dirs: list[str] = []
     if args.check:
-        by_parent: dict[str, list[Path]] = {}
-        for path, _data in planned:
-            parent = path.parent.relative_to(root).as_posix()
-            by_parent.setdefault(parent, []).append(path)
         for parent in output_dirs:
-            paths = by_parent.get(parent, [])
-            if paths and parent not in missing_dirs and all(not path.is_file() for path in paths):
+            if parent in missing_dirs:
+                continue
+            # Empty means the directory has no entries. An unrelated file
+            # is still a directory the operator can look inside, so the
+            # missing deliverables are named one by one.
+            if not any((root / parent).iterdir()):
                 empty_dirs.append(parent)
     for path, data in planned:
         if args.check:
@@ -107,16 +155,16 @@ def main(argv: list[str] | None = None) -> int:
             if parent in missing_dirs or parent in empty_dirs:
                 continue
             if not path.is_file():
-                drifted.append(f"missing: {rel}")
+                problems.append(f"missing: {rel}")
             elif path.read_bytes() != data:
-                drifted.append(f"differs: {rel}")
+                problems.append(f"differs: {rel}")
             continue
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    if missing_dirs or empty_dirs or drifted:
-        if missing_dirs and not empty_dirs and not drifted:
+    if missing_dirs or empty_dirs or problems:
+        if missing_dirs and not empty_dirs and not problems:
             summary = "output directory does not exist. --check writes nothing."
-        elif empty_dirs and not missing_dirs and not drifted:
+        elif empty_dirs and not missing_dirs and not problems:
             summary = "output directory is empty. --check writes nothing."
         else:
             summary = "deliverables do not match rules.ja. --check writes nothing."
@@ -125,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"missing: {rel}", file=sys.stderr)
         for rel in empty_dirs:
             print(f"empty: {rel}", file=sys.stderr)
-        for line in drifted:
+        for line in problems:
             print(line, file=sys.stderr)
         print("run without --check to write them.", file=sys.stderr)
         return 1

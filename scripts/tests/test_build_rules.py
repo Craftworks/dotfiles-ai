@@ -59,6 +59,28 @@ def generated_outputs(root: Path) -> dict:
             if k.startswith(".cursor/") or k.startswith(".claude/")}
 
 
+def deliverable_paths(names: set[str]) -> list[str]:
+    """Order build-rules prints: rule name, then Cursor, then Claude."""
+    rules = sorted({Path(name).stem for name in names})
+    paths = []
+    for rule in rules:
+        paths.append(f".cursor/rules/{rule}.mdc")
+        paths.append(f".claude/rules/{rule}.md")
+    return paths
+
+
+def success_report(root: Path, paths: list[str], *, check: bool) -> str:
+    count = len(paths)
+    if check:
+        summary = (
+            f"checked {count} files from rules.ja under {root}; "
+            "all match; wrote nothing"
+        )
+    else:
+        summary = f"wrote {count} files from rules.ja under {root}"
+    return summary + "\n" + "".join(f"{path}\n" for path in paths)
+
+
 def assert_names_file(testcase: unittest.TestCase, text: str, filename: str):
     """filename must appear, and sample.md must not match sample.mdc."""
     testcase.assertRegex(text, re.escape(filename) + r"(?![\w])")
@@ -71,6 +93,14 @@ CAUSES = {
     "unknown-key": 'unknown key "bogus"',
     "missing-body": "missing body.md",
     "mixed-valid": "missing body.md",
+    "meta-not-object": "meta.json is not an object",
+    "description-missing": "missing description",
+    "description-not-string": "description is not a string",
+    "cursor-missing": "missing cursor",
+    "cursor-not-object": "cursor is not an object",
+    "cursor-unknown-key": 'unknown key "bogus" in cursor',
+    "globs-not-string": "globs is not a string",
+    "always-apply-not-bool": "alwaysApply is not a boolean",
 }
 
 # Next action that stderr must contain, one sentence per case.
@@ -80,6 +110,14 @@ ACTIONS = {
     "unknown-key": "remove the unknown key or extend the schema",
     "missing-body": "create body.md",
     "mixed-valid": "create body.md",
+    "meta-not-object": "replace meta.json with an object",
+    "description-missing": "add a string description",
+    "description-not-string": "set description to a string",
+    "cursor-missing": "add a cursor object",
+    "cursor-not-object": "set cursor to an object",
+    "cursor-unknown-key": "remove the unknown key or extend the schema",
+    "globs-not-string": "set globs to a string or null",
+    "always-apply-not-bool": "set alwaysApply to true or false",
 }
 
 
@@ -91,10 +129,12 @@ class GoldenFixtureTest(unittest.TestCase):
         root = make_root(fixture)
         result = run_build(root)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("wrote ", result.stdout)
-        self.assertIn(".cursor/rules/", result.stdout)
-        self.assertIn(".claude/rules/", result.stdout)
         expected = read_tree(fixture / "expected")
+        self.assertEqual(
+            result.stdout,
+            success_report(root, deliverable_paths(set(expected)), check=False),
+        )
+        self.assertEqual(result.stderr, "")
         actual = generated_outputs(root)
         self.assertEqual(set(actual), set(expected),
                          msg=f"generated file set differs: {sorted(actual)} vs {sorted(expected)}")
@@ -128,10 +168,11 @@ class CheckModeTest(unittest.TestCase):
         before = read_tree(root)
         ok = run_build(root, "--check")
         self.assertEqual(ok.returncode, 0, msg=ok.stderr)
-        self.assertIn("checked ", ok.stdout)
-        self.assertIn("all match; wrote nothing", ok.stdout)
-        self.assertIn(".cursor/rules/sample-auto.mdc", ok.stdout)
-        self.assertIn(".claude/rules/sample-auto.md", ok.stdout)
+        self.assertEqual(
+            ok.stdout,
+            success_report(root, deliverable_paths(set(generated_outputs(root))), check=True),
+        )
+        self.assertEqual(ok.stderr, "")
         self.assertEqual(read_tree(root), before, msg="--check rewrote files")
 
         target = root / ".cursor" / "rules" / "sample-auto.mdc"
@@ -176,6 +217,45 @@ class CheckModeTest(unittest.TestCase):
         self.assertEqual(list((root / ".cursor" / "rules").iterdir()), [])
         self.assertEqual(list((root / ".claude" / "rules").iterdir()), [])
 
+    def test_check_names_a_missing_file_when_a_sibling_remains(self):
+        root = make_root(FIXTURES / "auto")
+        shutil.copytree(
+            root / "rules.ja" / "sample-auto",
+            root / "rules.ja" / "sample-other",
+        )
+        self.assertEqual(run_build(root).returncode, 0)
+        (root / ".cursor" / "rules" / "sample-auto.mdc").unlink()
+        before = read_tree(root)
+        ng = run_build(root, "--check")
+        self.assertNotEqual(ng.returncode, 0)
+        self.assertEqual(ng.stdout, "")
+        self.assertEqual(
+            ng.stderr,
+            "deliverables do not match rules.ja. --check writes nothing.\n"
+            "missing: .cursor/rules/sample-auto.mdc\n"
+            "run without --check to write them.\n",
+        )
+        self.assertEqual(read_tree(root), before, msg="--check wrote files")
+
+    def test_check_names_missing_files_when_unrelated_files_remain(self):
+        root = make_root(FIXTURES / "auto")
+        for rel in (".cursor/rules", ".claude/rules"):
+            directory = root / rel
+            directory.mkdir(parents=True)
+            (directory / "notes.txt").write_text("x\n", encoding="utf-8")
+        before = read_tree(root)
+        ng = run_build(root, "--check")
+        self.assertNotEqual(ng.returncode, 0)
+        self.assertEqual(ng.stdout, "")
+        self.assertEqual(
+            ng.stderr,
+            "deliverables do not match rules.ja. --check writes nothing.\n"
+            "missing: .cursor/rules/sample-auto.mdc\n"
+            "missing: .claude/rules/sample-auto.md\n"
+            "run without --check to write them.\n",
+        )
+        self.assertEqual(read_tree(root), before, msg="--check changed unrelated files")
+
 
 class InvalidInputTest(unittest.TestCase):
     """Done condition 4: invalid input exits with an error and writes no output."""
@@ -188,6 +268,7 @@ class InvalidInputTest(unittest.TestCase):
         self.assertIn(CAUSES[case], result.stderr, msg=f"{case}: stderr does not state the cause")
         self.assertIn(ACTIONS[case], result.stderr,
                       msg=f"{case}: stderr does not state the next action")
+        self.assertNotIn("Traceback", result.stderr, msg=f"{case}: stderr is a traceback")
         self.assertFalse((root / ".cursor").exists(), msg=f"{case}: .cursor was created")
         self.assertFalse((root / ".claude").exists(), msg=f"{case}: .claude was created")
 
@@ -207,6 +288,42 @@ class InvalidInputTest(unittest.TestCase):
         # One valid rule beside one invalid rule must not be written either.
         self.check_invalid("mixed-valid")
 
+    def test_meta_not_object(self):
+        self.check_invalid("meta-not-object")
+
+    def test_description_missing(self):
+        self.check_invalid("description-missing")
+
+    def test_description_not_string(self):
+        self.check_invalid("description-not-string")
+
+    def test_cursor_missing(self):
+        self.check_invalid("cursor-missing")
+
+    def test_cursor_not_object(self):
+        self.check_invalid("cursor-not-object")
+
+    def test_cursor_unknown_key(self):
+        self.check_invalid("cursor-unknown-key")
+
+    def test_globs_not_string(self):
+        # null means absent. Every canonical meta.json uses "globs": null.
+        self.check_invalid("globs-not-string")
+
+    def test_always_apply_not_bool(self):
+        self.check_invalid("always-apply-not-bool")
+
+    def test_missing_rules_dir(self):
+        self.assertFalse((FIXTURES / "invalid" / "missing-rules-ja" / "rules.ja").exists())
+        root = Path(tempfile.mkdtemp(prefix="build-rules-test-"))
+        result = run_build(root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "rules.ja: missing rules.ja. create rules.ja\n")
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertFalse((root / ".cursor").exists())
+        self.assertFalse((root / ".claude").exists())
+
 
 class RealRulesSnapshotTest(unittest.TestCase):
     """Done condition 1: the real 11 rules produce output that matches the
@@ -225,11 +342,13 @@ class RealRulesSnapshotTest(unittest.TestCase):
         root = make_root(fixture)
         result = run_build(root)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("wrote ", result.stdout)
-        self.assertIn(".cursor/rules/", result.stdout)
-        self.assertIn(".claude/rules/", result.stdout)
         expected = read_tree(fixture / "expected")
         self.assertEqual(len(expected), 22)
+        self.assertEqual(
+            result.stdout,
+            success_report(root, deliverable_paths(set(expected)), check=False),
+        )
+        self.assertEqual(result.stderr, "")
         actual = generated_outputs(root)
         self.assertEqual(set(actual), set(expected),
                          msg=f"generated file set differs: {sorted(actual)} vs {sorted(expected)}")
