@@ -2,7 +2,7 @@
 
 This README is the specification of the scripts directory.
 
-It holds the scripts that process the canonical sources in `rules.ja/` and `skills.ja/`. `build-rules`, `install-rules`, `install-skills`, and `translate-rules` are implemented.
+It holds the scripts that process the canonical sources in `rules.ja/` and `skills.ja/`. `build-rules`, `install-rules`, `install-skills`, `translate-rules`, and `translate-skills` are implemented.
 
 | Script | Job |
 |---|---|
@@ -10,6 +10,7 @@ It holds the scripts that process the canonical sources in `rules.ja/` and `skil
 | `install-skills` | Installs the skills from the canonical sources into the home skill directories as symbolic links |
 | `install-rules` | Links the deliverables `build-rules` already wrote into the home rule directories |
 | `translate-rules` | Generates the English edition `rules.en/` for publication from the canonical sources |
+| `translate-skills` | Generates the English edition `skills.en/` for publication from the canonical sources |
 
 ## build-rules
 
@@ -69,7 +70,7 @@ Input/output contract:
 - Running it twice in a row changes nothing on the second run (idempotent)
 - `--tool <cursor|claude>` narrows the run to one destination. `cursor` is `<home>/.cursor/skills`; `claude` is `<home>/.claude/skills`. Omit `--tool` and both destinations are selected, which is every case above. The unselected destination is not part of the run: the script does not create it, does not look inside it, and does not report it. A conflict or a stale link there does not affect the run, and the entries there are identical before and after, including when the run fails. `--tool` with a value other than `cursor` or `claude` exits with `tool: unknown tool "<value>". pass --tool cursor or --tool claude`. `--tool` given more than once exits with `tool: --tool was given more than once. pass it once`. Either error is printed before any destination is read or written, and nothing is changed. The summary still counts skills on a normal run and links on `--check`; with one destination those two numbers are equal, and every path printed is under the selected destination
 
-Non-goals: copying skill files, installing rules (`install-rules` links them), translation and the English edition of skills, deleting real files or directories, managing plugin skills or claude.ai-synced skills, watch mode, Windows support (symbolic links there need privileges this setup does not assume).
+Non-goals: copying skill files, installing rules (`install-rules` links them), the English edition of skills (`translate-skills` writes `skills.en/`; this script does not link it), deleting real files or directories, managing plugin skills or claude.ai-synced skills, watch mode, Windows support (symbolic links there need privileges this setup does not assume).
 
 Validation and errors:
 
@@ -134,7 +135,7 @@ Input/output contract:
 - A rule is a target when its current Japanese (`body.md` or `description`) differs from the previous Japanese, or when `rules.en/<name>/` does not exist in the working tree (it is then translated in full). Rule names given on the command line narrow the run to those rules; an unknown name is an error
 - Where the Japanese is unchanged, the previous English is kept byte for byte. The previous and current Japanese are compared line by line; each unchanged line takes the previous English line at the same position, and only changed or added lines take the new translation. The translator receives the whole current Japanese, and, for consistent terms, the previous English of the unchanged lines only, as [Japanese, English] pairs. The old English of a changed line is never shown: measured on 2026-11-23, Haiku shown it copied the old line instead of translating the new Japanese (2 of 2 runs). Review is the diff of the targeted files under `rules.en/`
 - A rule whose `rules.en/<name>/` has uncommitted changes is an error (`commit or discard rules.en/<name>, then rerun`): keeping lines from an English that does not match the base pair would misplace them. A base pair whose line counts differ is also an error; deleting `rules.en/<name>/` makes the rule a full translation. Nothing is retranslated in full silently
-- The translator is the Claude Code command `claude -p`, using the Sonnet model. Measured on 2026-11-23 with the JSON shape below, Haiku and Sonnet both kept the line contract in 18 of 18 runs; Sonnet kept the source's emphasis and added no trailing period where Haiku added 2, at about 1.7 yen per rule against 0.13 (at 159 yen per dollar; with the Claude Code login this is drawn from the plan's usage, and the yen are the API equivalent). The model and the prompt are constants in the script, and that constant is their only definition. Authentication is the Claude Code login already on the machine. `--bare` is not used: it reads only `ANTHROPIC_API_KEY`, never the login
+- The translator is the Claude Code command `claude -p`, using the Sonnet model. Measured on 2026-11-23 with the JSON shape below, Haiku and Sonnet both kept the line contract in 18 of 18 runs; Sonnet kept the source's emphasis and added no trailing period where Haiku added 2, at about 1.7 yen per rule against 0.13 (at 159 yen per dollar; with the Claude Code login this is drawn from the plan's usage, and the yen are the API equivalent). The model and the prompt are constants in `scripts/translator.py`, shared with translate-skills, and that module is their only definition. Authentication is the Claude Code login already on the machine. `--bare` is not used: it reads only `ANTHROPIC_API_KEY`, never the login
 - The translator runs isolated: its working directory is an empty temporary directory, and it is started with `--tools "" --strict-mcp-config --setting-sources "" --disable-slash-commands --no-session-persistence --system-prompt <prompt>`. CLAUDE.md, rules, hooks, MCP servers, and skills are not loaded, and the translator has no tool with which to touch files. Measured on 2026-11-23: the default start sends about 32K tokens of context even for a one-word reply; isolated, about 3K
 - One rule is one translator call. The request on standard input and the answer on standard output are a JSON object with a `description` string and a `body` array holding one string per line. Measured on 2026-11-23 with Haiku: plain lines (description on line 1) kept the line contract in 13 of 18 runs, because the description was merged into or swapped with the `# Title` heading; this JSON shape kept it in 18 of 18. Calls run one at a time, and a rule that is not a target makes no call at all. Measured on 2026-11-23 with Sonnet: 5.8 seconds per rule on average (7.3 at most), about 3 seconds of which is process start; a run with nothing changed takes under 1 second
 - A call fails when the command is missing, exits non-zero, exceeds the timeout (120 seconds by default, `--timeout <seconds>`), or prints output that breaks the contract: empty output, output that is not a JSON object of that shape, a different line count or Markdown marker, Japanese characters left in the text, or an empty description. A failed call is not retried; the run is all or nothing, so rerunning is safe
@@ -154,6 +155,26 @@ Done conditions:
 3. On any failed call or invalid input, it exits with an error naming the rule, the cause, and the next action, and `rules.en/` is identical before and after
 4. The translator starts without CLAUDE.md, rules, hooks, MCP servers, skills, or tools
 5. It runs on both Mac and Windows
+
+## translate-skills
+
+Purpose: generate the English edition `skills.en/` for publication from `skills.ja/`. The canonical sources stay in Japanese. `install-skills` keeps linking `skills.ja/`; it does not read `skills.en/`.
+
+Input/output contract:
+
+- One translator call is one Markdown file, using the same JSON shape, model, prompt, and isolation flags as translate-rules (`scripts/translator.py`). A skill is not one call: a long combined request is outside the measured line contract
+- `SKILL.md` translates `description` and the body. `name` stays the directory name and is not sent. Other frontmatter keys are copied. `basis.md` is not part of the edition. A file that is not Markdown is copied byte for byte and makes no call
+- Lines inside a code fence are not sent. They are copied from the Japanese file. The fence markers themselves are sent and must be kept
+- The line contract, the git baseline, and the splice are per file. The baseline is the last commit that changed `skills.en/<skill>/<path>`. Unchanged lines keep the previous English byte for byte. The old English of a changed line is not sent. Uncommitted changes under `skills.en/<skill>/` are an error and the run writes nothing
+- Calls run `--jobs` at a time (default 4). The first line is `translating <count> file, <jobs> at a time` for one file and `translating <count> files, <jobs> at a time` for more, then `translating <skill>/<path>` as each call starts, `copying <skill>/<path>` for a copied file, and `unchanged <skill>/<path>` for a file that needs nothing. A failed call stops the calls still running, starts no new call, and leaves `skills.en/` unchanged. The error names the file, the cause, and the next action (`make claude -p succeed, then rerun`)
+- After every call has succeeded, the run prints `wrote <count> files from skills.ja under <root>` and every path written. A run with nothing to do says so and writes nothing
+- `SKILL.md` is validated with `scripts/skill_source.py`, the same lines install-skills uses, before any call
+
+Non-goals: installing `skills.en/`, translating `basis.md`, translating text inside code fences, one request that holds every file, removing `skills.en/<skill>/` when a skill is removed (that is done by hand), parallel calls inside translate-rules (that command stays one call at a time).
+
+Implementation: Python 3, standard library only. The command line is `translate-skills --root <repository root> [--translator <command>] [--timeout <seconds>] [--jobs <n>] [<name>...]`. `--jobs` below 1 exits with `jobs: --jobs must be at least 1. pass --jobs 4` and changes nothing.
+
+Tests: a subprocess against a temporary git repository and a fake `--translator`. The real `claude` is not called. Cases: a new `SKILL.md` keeps `name` and translates `description` and the body; a fence interior is absent from the request and present in the output, `basis.md` is omitted, and a shell script is copied; an unchanged skill makes no call; a changed line is new and the old English of that line is not in the prompt; two calls overlap under `--jobs 2`, and a failing call writes nothing; `--jobs 0` and a missing `SKILL.md` make no call.
 
 ## How this specification is kept
 

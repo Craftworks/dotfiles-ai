@@ -32,7 +32,7 @@ dotfiles-ai/
 ## 原則の共有方法
 
 - **スキル**は Agent Skills 標準（`SKILL.md`）で3者にそのまま共有できる。Claude Code は `~/.claude/skills/`、Cursor は `~/.cursor/skills/` のほか互換パスとして `~/.claude/skills/` も読む
-- **ルール**は形式がプラットフォームごとに異なる（Cursor は `.mdc`、Claude Code は `CLAUDE.md` と `paths:` つきルール、muse は素の Markdown）。正本は `rules.ja/` に置く：ルールごとに `body.md`（本文）と `meta.json`（description と、プラットフォーム固有項目を名前空間に分けたもの）に分離している。各形式への生成は `scripts/build-rules` が正本から行い、そのファイルのホームへのリンクは `scripts/install-rules` が行い、スキルのインストールは `scripts/install-skills` が行う。ルールとスキルはホームディレクトリへのインストール（`~/.claude/rules/`、`~/.cursor/rules/`、`~/.claude/skills/`、`~/.cursor/skills/`）から効き、このリポジトリは正本とスクリプトだけを持ち、プロジェクトレベルのルールやスキルは持たない。編集は正本に対して行い、生成物やインストール済みのファイルは編集しない。公開用の英語版 `rules.en/` は `scripts/translate-rules` が生成し、正本は日本語のままにする
+- **ルール**は形式がプラットフォームごとに異なる（Cursor は `.mdc`、Claude Code は `CLAUDE.md` と `paths:` つきルール、muse は素の Markdown）。正本は `rules.ja/` に置く：ルールごとに `body.md`（本文）と `meta.json`（description と、プラットフォーム固有項目を名前空間に分けたもの）に分離している。各形式への生成は `scripts/build-rules` が正本から行い、そのファイルのホームへのリンクは `scripts/install-rules` が行い、スキルのインストールは `scripts/install-skills` が行う。ルールとスキルはホームディレクトリへのインストール（`~/.claude/rules/`、`~/.cursor/rules/`、`~/.claude/skills/`、`~/.cursor/skills/`）から効き、このリポジトリは正本とスクリプトだけを持ち、プロジェクトレベルのルールやスキルは持たない。編集は正本に対して行い、生成物やインストール済みのファイルは編集しない。公開用の英語版 `rules.en/` と `skills.en/` は `scripts/translate-rules` と `scripts/translate-skills` が生成し、正本は日本語のままにする
 
 ## 運用原則
 
