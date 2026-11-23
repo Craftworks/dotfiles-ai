@@ -10,6 +10,8 @@ import os
 import sys
 from pathlib import Path
 
+from rule_source import MISSING_RULES_JA
+
 # Claude first, then Cursor, matching install-skills.
 DESTINATIONS = (
     (".claude/rules", ".md"),
@@ -134,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     home = Path(args.home)
     rules_dir = root / "rules.ja"
     if not rules_dir.is_dir():
-        print("rules.ja: missing rules.ja. create rules.ja", file=sys.stderr)
+        print(MISSING_RULES_JA, file=sys.stderr)
         return 1
     names = sorted(p.name for p in rules_dir.iterdir() if p.is_dir())
     missing = [
