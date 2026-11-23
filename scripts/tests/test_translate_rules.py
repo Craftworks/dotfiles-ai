@@ -534,6 +534,10 @@ class IsolationTest(unittest.TestCase):
             "--no-session-persistence",
             "--system-prompt",
         ])
+        self.assertIn(
+            "Japanese inside a code fence, including a comment, is translated.",
+            call["argv"][-1],
+        )
         self.assertEqual(call["cwd_entries"], [])
         cwd = Path(call["cwd"]).resolve()
         self.assertNotEqual(cwd, repo.root.resolve())

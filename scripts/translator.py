@@ -21,6 +21,8 @@ MODEL = "claude-sonnet-5-5"
 # with one string per line. Measured on 2026-11-23 with Haiku, plain lines
 # kept the line contract in 13 of 18 runs (the description was merged into or
 # swapped with the "# Title" heading); this JSON shape kept it in 18 of 18.
+# A skills.en run the same day left the Japanese comment on prototype/UI.md
+# line 61, so the prompt says a comment inside a code fence is translated.
 PROMPT = (
     "Translate the Japanese in the JSON object on standard input into English. "
     'Output only a JSON object with the same keys: "description" (a string) '
@@ -29,7 +31,8 @@ PROMPT = (
     "strings empty, keep each element's Markdown marker (heading level, list "
     "marker, table row, code fence), keep text already in English and "
     "identifiers unchanged, and add no trailing period where the Japanese has "
-    "none. No code fence around the JSON."
+    "none. Japanese inside a code fence, including a comment, is translated. "
+    "Leave code tokens and string literals unchanged. No code fence around the JSON."
 )
 
 NEXT_ACTION = "make claude -p succeed, then rerun"
