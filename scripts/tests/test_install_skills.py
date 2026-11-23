@@ -642,6 +642,30 @@ class RealSkillsTest(unittest.TestCase):
                 self.assertEqual(link.readlink(), target)
                 self.assertTrue((link / "SKILL.md").is_file(), msg=name)
 
+    def test_omitted_root_installs_from_the_repository_containing_the_script(self):
+        home = Path(tempfile.mkdtemp(prefix="install-skills-home-"))
+        elsewhere = Path(tempfile.mkdtemp(prefix="install-skills-cwd-"))
+        self.addCleanup(shutil.rmtree, home, True)
+        self.addCleanup(shutil.rmtree, elsewhere, True)
+        names = sorted(
+            p.name for p in (REPO_ROOT / "skills.ja").iterdir() if p.is_dir()
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--home", str(home)],
+            cwd=elsewhere,
+            capture_output=True, text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(result.stdout, install_report(home, names))
+        self.assertEqual(result.stderr, "")
+        for name in names:
+            target = (REPO_ROOT / "skills.ja" / name).resolve()
+            for dest in DESTINATIONS:
+                link = home / dest / name
+                self.assertEqual(link.readlink(), target)
+
 
 class NormalRunTest(unittest.TestCase):
     def test_removes_stale_links(self):

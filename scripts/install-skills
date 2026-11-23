@@ -86,7 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Link skills.ja into the home skill directories.",
     )
-    parser.add_argument("--root", required=True, help="directory that contains skills.ja")
+    parser.add_argument(
+        "--root",
+        default=None,
+        help="directory that contains skills.ja (default: the repository containing this script)",
+    )
     parser.add_argument(
         "--home",
         default=str(Path.home()),
@@ -113,7 +117,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     destinations = DESTINATIONS if not args.tool else (f".{args.tool[0]}/skills",)
-    root = Path(os.path.abspath(args.root))
+    root = (Path(__file__).resolve().parent.parent if args.root is None
+            else Path(os.path.abspath(args.root)))
     home = Path(args.home)
     skills_dir = root / "skills.ja"
     if not skills_dir.is_dir():
