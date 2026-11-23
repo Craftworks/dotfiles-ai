@@ -6,7 +6,6 @@ and .claude/rules/<name>.md. This script only creates symbolic links.
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -103,7 +102,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Link .cursor/rules and .claude/rules into the home rule directories.",
     )
-    parser.add_argument("--root", required=True, help="directory that contains rules.ja")
     parser.add_argument(
         "--home",
         default=str(Path.home()),
@@ -132,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     destinations = DESTINATIONS if not args.tool else tuple(
         item for item in DESTINATIONS if item[0].startswith(f".{args.tool[0]}/")
     )
-    root = Path(os.path.abspath(args.root))
+    root = Path(__file__).resolve().parent.parent
     home = Path(args.home)
     rules_dir = root / "rules.ja"
     if not rules_dir.is_dir():

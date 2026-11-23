@@ -13,9 +13,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from support import install_scripts
+
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "install-rules"
+NAME = "install-rules"
 DESTINATIONS = (
     (".claude/rules", ".md"),
     (".cursor/rules", ".mdc"),
@@ -28,14 +31,14 @@ CHECK_NEXT = (
 
 def run_install(root: Path, home: Path, *extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--root", str(root), "--home", str(home), *extra],
+        [sys.executable, str(install_scripts(root) / NAME), "--home", str(home), *extra],
         capture_output=True, text=True,
     )
 
 
 def make_dirs() -> tuple[Path, Path]:
-    root = Path(tempfile.mkdtemp(prefix="install-rules-test-"))
-    home = Path(tempfile.mkdtemp(prefix="install-rules-home-"))
+    root = Path(tempfile.mkdtemp(prefix="install-rules-test-")).resolve()
+    home = Path(tempfile.mkdtemp(prefix="install-rules-home-")).resolve()
     return root, home
 
 
@@ -133,14 +136,15 @@ class FreshInstallTest(unittest.TestCase):
             self.assertEqual(link.readlink(), target)
             self.assertEqual(link.read_bytes(), payload)
 
-    def test_relative_root_still_links_with_an_absolute_target(self):
+    def test_relative_script_path_still_links_with_an_absolute_target(self):
         root, home = make_dirs()
         self.addCleanup(shutil.rmtree, root, True)
         self.addCleanup(shutil.rmtree, home, True)
         write_rule(root, "alpha", b"cursor-alpha\n", b"claude-alpha\n")
+        install_scripts(root)
 
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--root", ".", "--home", str(home)],
+            [sys.executable, "scripts/install-rules", "--home", str(home)],
             cwd=root, capture_output=True, text=True,
         )
 
