@@ -1,0 +1,77 @@
+# Good Tests and Bad Tests
+
+## Good Tests
+
+**Integration style**: Test through real interfaces, not by mocking internal parts.
+
+```typescript
+// GOOD: Test observable behavior
+test("user can checkout with valid cart", async () => {
+  const cart = createCart();
+  cart.add(product);
+  const result = await checkout(cart, paymentMethod);
+  expect(result.status).toBe("confirmed");
+});
+```
+
+Characteristics:
+
+- Test behavior that users/callers care about
+- Use only the public API
+- Survive internal refactoring
+- Describe WHAT, not HOW
+- One logical assertion per test
+
+## Bad Tests
+
+**Testing implementation details**: Coupled to internal structure.
+
+```typescript
+// BAD: Tests implementation details
+test("checkout calls paymentService.process", async () => {
+  const mockPayment = jest.mock(paymentService);
+  await checkout(cart, payment);
+  expect(mockPayment.process).toHaveBeenCalledWith(cart.total);
+});
+```
+
+Red flags:
+
+- Mocking internal collaborators
+- Testing private methods
+- Asserting on call counts or order
+- Breaking on refactor when behavior hasn't changed
+- Test name describes HOW, not WHAT
+- Verifying through external means rather than the interface
+
+```typescript
+// BAD: Bypasses the interface to verify
+test("createUser saves to database", async () => {
+  await createUser({ name: "Alice" });
+  const row = await db.query("SELECT * FROM users WHERE name = ?", ["Alice"]);
+  expect(row).toBeDefined();
+});
+
+// GOOD: Verifies through the interface
+test("createUser makes user retrievable", async () => {
+  const user = await createUser({ name: "Alice" });
+  const retrieved = await getUser(user.id);
+  expect(retrieved.name).toBe("Alice");
+});
+```
+
+**Tautological tests**: The expected value mirrors the implementation, so the test passes by construction.
+
+```typescript
+// BAD: Recomputes the expected value the same way the code does
+test("calculateTotal sums line items", () => {
+  const items = [{ price: 10 }, { price: 5 }];
+  const expected = items.reduce((sum, i) => sum + i.price, 0);
+  expect(calculateTotal(items)).toBe(expected);
+});
+
+// GOOD: Expected value is an independent, known literal
+test("calculateTotal sums line items", () => {
+  expect(calculateTotal([{ price: 10 }, { price: 5 }])).toBe(15);
+});
+```
