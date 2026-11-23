@@ -77,6 +77,43 @@ chore: import beta baseline
 Add detect daemon, watcher scripts, action helpers, docs, and samples.
 ```
 
+### 本文の具体性
+
+- 本文は、diff を見なくても「何が増え・どう振る舞うか」を再構成できる具体さで書く。対象の名前（ファイル、コマンド、フラグ、出力先）と、決めた振る舞いを、その具体的な形で書く
+- 原則を表す言葉（純粋関数、契約の一部、など）だけで済ませない。その原則がこの変更で具体的にどうなったかを、同じ文か次の文で書く
+- 数えられるものは数で書く（生成ファイル数、テスト件数、対象の件数など、変更の規模が分かるもの）
+- 判定：本文だけを読んで、半年後に変更の内容を再構成できるか。再構成できない文は、原則語で済ませていないか疑う
+
+悪い例（body = 原則語だけで、変更の具体が復元できない）:
+
+```
+feat: add the build-rules generator
+
+Hand-written deliverables drift from rules.ja. Generate them
+as a pure function of the source. Reporting is part of the
+contract: a silent success cannot be told from nothing
+happening.
+```
+
+良い例（body = why に、対象の名前と決めた振る舞いの形が伴う）:
+
+```
+feat: add the build-rules generator
+
+Generate .cursor/rules/<name>.mdc and .claude/rules/<name>.md
+from rules.ja/<name>/ (body.md + meta.json), replacing the
+hand-written deliverables that drifted from the source.
+
+CLI is --root <dir> (required) plus --check. All rules are
+validated before anything is written; an error names the rule,
+the cause, and the next action.
+
+Reporting is pinned by the tests: a run prints how many files
+it wrote (or checked) and every path. A failed --check names
+each differing file, and a missing or empty output directory
+is named once instead of listing its files.
+```
+
 ## Hooks
 
 - フックは早期フィードバックであり、ゲートの正本は CI に置く。ローカル完結のプロジェクトでは、フック＋タグ前のフルチェックをゲート扱いにする
