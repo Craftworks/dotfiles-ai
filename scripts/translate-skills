@@ -83,10 +83,6 @@ def render_skill(skill: SkillMd, description: str, body_lines: list[str]) -> str
     return text
 
 
-def render_markdown(lines: list[str]) -> str:
-    return "\n".join(lines) + "\n"
-
-
 class MarkdownTarget:
     def __init__(self, rel: str, lines: list[str], base, skill: SkillMd | None):
         self.rel = rel
@@ -95,6 +91,13 @@ class MarkdownTarget:
         self.skill = skill
 
     def translate(self, translator: str, timeout: float) -> str:
+        """The English file text, or TranslatorFailed.
+
+        The call's JSON shape is a description plus a body. For SKILL.md,
+        lines[0] is the description and is checked with check_output. Any
+        other Markdown file has no description: it sends "" and is checked
+        with check_body, which reads only the body lines of the answer.
+        """
         if self.skill:
             request = self.lines
         else:
@@ -111,10 +114,10 @@ class MarkdownTarget:
             new_lines = splice(self.base[0], self.base[1], self.lines, new_lines)
         if self.skill:
             return render_skill(self.skill, new_lines[0], new_lines[1:])
-        return render_markdown(new_lines)
+        return "\n".join(new_lines) + "\n"
 
 
-def base_lines(root: Path, skill: str, rel: str, text: str) -> tuple[list[str], list[str]] | str:
+def base_lines(root: Path, skill: str, rel: str) -> tuple[list[str], list[str]] | str:
     """Japanese and English lines at the commit that last changed the English
     file, or the error line."""
     commit = git(root, "log", "-1", "--format=%H", "--", f"skills.en/{skill}/{rel}").strip()
@@ -216,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
             if not en_path.exists():
                 targets.append(MarkdownTarget(f"{name}/{rel}", lines, None, current_skill))
                 continue
-            pair = base_lines(root, name, rel, "")
+            pair = base_lines(root, name, rel)
             if isinstance(pair, str):
                 errors.append(pair)
                 continue
