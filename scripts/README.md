@@ -2,11 +2,12 @@
 
 This README is the specification of the scripts directory.
 
-It holds the scripts that process the canonical sources in `rules.ja/`. `build-rules` is implemented. `translate-rules` is currently unimplemented (design only).
+It holds the scripts that process the canonical sources in `rules.ja/` and `skills.ja/`. `build-rules` is implemented. `build-skills` and `translate-rules` are currently unimplemented (design only).
 
 | Script | Job |
 |---|---|
 | `build-rules` | Deterministically generates the deliverables (Cursor and Claude formats) from the canonical sources |
+| `build-skills` | Installs the skills from the canonical sources into the home skill directories as symbolic links |
 | `translate-rules` | Generates the English edition `rules.en/` for publication from the canonical sources |
 
 ## build-rules
@@ -50,6 +51,40 @@ Done conditions:
 3. `--check` exits successfully when the outputs match the canonical sources, and exits with an error when a generated file has been edited by hand, a file is missing, or an output directory is missing or empty — naming the drifted file, or the directory alone when the directory itself is missing or has no entries. A directory that still contains an unrelated file is not that case: each missing deliverable is named
 4. On invalid input it exits with an error and writes no output files at all
 5. On a fixture with globs, the Claude format carries a correct `paths` frontmatter
+
+## build-skills
+
+Purpose: install the skills in `skills.ja/<name>/` into the home skill directories (`~/.claude/skills/` and `~/.cursor/skills/`) as one symbolic link per skill, pointing at the skill directory in this repository. Skills need no format conversion, so installation creates links, never copies: the canonical source stays the only real files, and editing a skill takes effect without reinstalling.
+
+Input/output contract:
+
+- The unit of installation is the skill directory. A link covers everything in it (SKILL.md and any auxiliary files); files added inside a skill need no reinstall. Only adding or removing a whole skill does
+- Link targets are absolute paths under the repository root given by `--root`. If the repository moves, the links break; `--check` reports them and a normal run repairs them
+- The script manages only symbolic links that point into this repository's `skills.ja/`. It never creates, overwrites, or deletes a real file or directory, and never touches a link that points elsewhere. Entries owned by others (for example `~/.claude/skills/synced/`, where Claude Code keeps the skills it downloads from the user's claude.ai account) are outside its management
+- A destination entry that blocks a skill — a real file or directory, or a link pointing outside this repository — is a conflict. Conflicts are detected before anything is changed: if any skill is invalid or any conflict exists, the run exits with an error and no link is created, repaired, or removed
+- A link at a destination that points into `skills.ja/` for a skill that no longer exists is stale. A normal run removes it; `--check` reports it. Only links into this repository are ever removed
+- Reporting is part of the contract. A normal run prints a summary line (`installed <count> skills from skills.ja under <home>`) followed by the path of every link in place, and one `removed: <path>` line for each stale link it removed. A successful `--check` prints `checked <count> links from skills.ja under <home>; all match; wrote nothing` followed by every path checked. Silent success is a defect: it is indistinguishable from nothing happening
+- A failed `--check` prints a summary line, one line per problem, and the next action (`run without --check to install the links; conflicting entries must be removed by hand.`) on stderr. Problems are named at the unit the operator acts on: `missing: <path>` when no entry exists, `differs: <path>` when a link points at the wrong target or is broken, `stale: <path>` for a link whose skill is gone, `conflict: <path>` for a blocking entry the script must not touch. When a destination directory itself is missing, the directory is named once (`missing: <dir>`) and the links under it are not listed
+- Running it twice in a row changes nothing on the second run (idempotent)
+
+Non-goals: copying skill files, installing rules (build-rules generates them; their home installation is separate), translation and the English edition of skills, deleting real files or directories, managing plugin skills or claude.ai-synced skills, watch mode, Windows support (symbolic links there need privileges this setup does not assume).
+
+Validation and errors:
+
+- All skills are validated first. `skills.ja` must exist. Every subdirectory of `skills.ja/` is a skill: it must contain a `SKILL.md` whose frontmatter, read as simple `key: value` lines, has a `name` and a `description`, both non-empty strings, and the `name` must equal the directory name. Other frontmatter keys are allowed (the skill format is an open standard with optional keys such as `disable-model-invocation`). A skill named `synced` (in any capitalisation) is rejected: Claude Code reserves that name under `~/.claude/skills/` for synced skills. Linking starts only after every skill passes and no conflict exists
+- Error messages take the form: skill name, cause, next action. A missing `skills.ja` is named `skills.ja` in that same form. The exit code reports success or failure
+
+Implementation: Python 3, standard library only, a single file (no extension), the same conventions as build-rules. The command line is `build-skills [--root <repository root>] [--home <home directory>] [--check]`; `--home` defaults to the user's home directory and exists so tests can install into a temporary home. Frontmatter is read as simple `key: value` lines; no YAML library is used. macOS is the target platform.
+
+Tests: built test-first, in the style of the build-rules tests (the script is invoked as a subprocess against temporary `--root` and `--home` directories). Cases: a fresh install links every skill at both destinations with the correct targets; a second run changes nothing; `--check` passes on the installed state and fails, naming the path, for a missing link, a wrong-target link, a stale link, and a conflict, and names the directory alone when a destination directory is missing; a normal run removes a stale link and repairs a link broken by moving the repository; a conflict (a real directory at a destination) blocks the whole run and nothing is linked; invalid inputs (missing SKILL.md, missing or empty description, a name that differs from the directory name, a skill named `synced`, a missing `skills.ja`, and a mix of valid and invalid skills) exit with an error and change nothing; entries the script does not own (a real `synced/` directory, a foreign link, a real file) are unchanged by every run, including failed ones; assertions on the output reporting (the full summary line and every path a run says it installed or checked); and a run over the real `skills.ja` into a temporary home, where every current skill ends up linked and every link resolves to a directory containing a SKILL.md (the oracle is `skills.ja` itself: the output is links, not bytes, so there is no golden snapshot).
+
+Done conditions:
+
+1. Into an empty home, every skill in `skills.ja` is linked at both destinations, and every link resolves to that skill's directory in the repository
+2. Running it twice in a row creates, repairs, and removes nothing on the second run
+3. `--check` exits successfully on the installed state, and exits with an error naming the path when a link is missing, points at the wrong target, or is stale, when a blocking entry conflicts, and naming the directory alone when a destination directory itself is missing
+4. On invalid input or any conflict, it exits with an error and changes nothing: no link is created, repaired, or removed
+5. Entries the script does not own — real files and directories, links pointing outside this repository, and `synced/` — are identical before and after every run, including failed runs
 
 ## translate-rules
 
