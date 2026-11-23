@@ -52,12 +52,19 @@ Done conditions:
 
 ## translate-rules
 
-Purpose: generate the English edition `rules.en/` for publication from `rules.ja/` (the Japanese canonical sources). This repository is published openly, so an English edition is provided; the canonical sources stay in Japanese, the language the approver can verify directly, and the English edition is a generated artifact.
+Purpose: generate the English edition `rules.en/` for publication from `rules.ja/` (the Japanese canonical sources). This repository is published openly, so an English edition is provided for people reading the repository. The canonical sources stay in Japanese, the language the approver can verify directly. Agents follow the Japanese deliverables that build-rules generates from those sources. The English edition is a generated artifact.
+
+Contract:
 
 - The scope is `body.md` and the `description` in `meta.json`. `basis.md` (the rationale) is a document for the approver and is out of scope
-- The output is `rules.en/` only. Distribution is performed by build-rules from the Japanese canonical sources
+- The output is `rules.en/<name>/body.md` and `rules.en/<name>/meta.json` only. Distribution is performed by build-rules from the Japanese canonical sources
+- `description` is translated. The `cursor` namespace is copied as the same JSON. Headings and identifiers that are already English stay as written
+- The translator is the Claude Code command `claude -p`. The script passes the Japanese source and, when that rule already exists under `rules.en/`, the previous English. It writes the translation that the command prints on stdout. Authentication is the Claude Code login already on the machine
 - It runs when the canonical sources have been updated. Targets are identified from the changed files under `rules.ja/` via `git diff`; rule names can also be given explicitly
-- Translation is non-deterministic: within a changed file, the wording of unchanged paragraphs may also shift. Review is done per changed file
+- Where the Japanese is unchanged, the previous English is kept. Only the Japanese that changed is retranslated. Review is the diff of the targeted files under `rules.en/`
+- If `claude` is missing or the command fails, the run writes nothing and leaves `rules.en/` as it was. It exits with an error that names the rule, the cause, and the next action: make `claude -p` succeed, then rerun
+
+Non-goals: Google Translate, DeepL, and any translator that requires an API key.
 
 ## How this specification is kept
 
