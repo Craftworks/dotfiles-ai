@@ -13,6 +13,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from rule_source import MISSING_RULES_JA, load_rule
+
 # The translator's model and prompt are defined here and nowhere else.
 # Sonnet over Haiku, measured on 2026-11-23 with the JSON shape below: both
 # kept the line contract in 18 of 18 runs; Sonnet kept the source's emphasis
@@ -191,51 +193,6 @@ def call_translator(translator: str, ja: list[str], reference: list[list[str]],
     return stdout.decode("utf-8").replace("\r\n", "\n")
 
 
-def validate_rule(rule_dir: Path) -> tuple[str, str] | str:
-    """(meta.json text, body.md text) for a valid rule, or the error line.
-
-    The checks and messages are the ones build-rules applies, so a rule is
-    valid for both scripts or for neither.
-    """
-    name = rule_dir.name
-    meta_path = rule_dir / "meta.json"
-    if not meta_path.is_file():
-        return f"{name}: missing meta.json. create meta.json"
-    meta_text = meta_path.read_text(encoding="utf-8")
-    try:
-        meta = json.loads(meta_text)
-    except json.JSONDecodeError:
-        return f"{name}: invalid JSON in meta.json. fix meta.json"
-    if not isinstance(meta, dict):
-        return f"{name}: meta.json is not an object. replace meta.json with an object"
-    unknown = [key for key in meta if key not in {"description", "cursor"}]
-    if unknown:
-        return (f'{name}: unknown key "{unknown[0]}". '
-                "remove the unknown key or extend the schema")
-    if "description" not in meta:
-        return f"{name}: missing description. add a string description"
-    if not isinstance(meta["description"], str):
-        return f"{name}: description is not a string. set description to a string"
-    if "cursor" not in meta:
-        return f"{name}: missing cursor. add a cursor object"
-    cursor = meta["cursor"]
-    if not isinstance(cursor, dict):
-        return f"{name}: cursor is not an object. set cursor to an object"
-    cursor_unknown = [key for key in cursor if key not in {"globs", "alwaysApply"}]
-    if cursor_unknown:
-        return (f'{name}: unknown key "{cursor_unknown[0]}" in cursor. '
-                "remove the unknown key or extend the schema")
-    globs = cursor.get("globs")
-    if globs is not None and not isinstance(globs, str):
-        return f"{name}: globs is not a string. set globs to a string or null"
-    if "alwaysApply" in cursor and not isinstance(cursor["alwaysApply"], bool):
-        return f"{name}: alwaysApply is not a boolean. set alwaysApply to true or false"
-    body_path = rule_dir / "body.md"
-    if not body_path.is_file():
-        return f"{name}: missing body.md. create body.md"
-    return meta_text, body_path.read_text(encoding="utf-8")
-
-
 def git(root: Path, *args: str) -> str:
     completed = subprocess.run(
         ["git", "-C", str(root), *args], capture_output=True, check=True
@@ -243,12 +200,11 @@ def git(root: Path, *args: str) -> str:
     return completed.stdout.decode("utf-8").replace("\r\n", "\n")
 
 
-def rule_lines(meta_text: str, body_text: str) -> list[str]:
+def rule_lines(description: str, body_text: str) -> list[str]:
     """The rule as the lines the line contract and the splice work on: the
-    description, then the body lines."""
-    meta = json.loads(meta_text)
+    description, then the body lines (LF, no trailing newline)."""
     body = body_text.replace("\r\n", "\n")
-    return [meta["description"]] + body.rstrip("\n").split("\n")
+    return [description] + body.rstrip("\n").split("\n")
 
 
 def base_pair(root: Path, name: str) -> tuple[str, list[str], list[str]] | str:
@@ -276,7 +232,8 @@ def base_pair(root: Path, name: str) -> tuple[str, list[str], list[str]] | str:
         return (f"{name}: rules.en/{name} is incomplete in commit {commit[:12]}. "
                 f"delete rules.en/{name} to translate it in full, then rerun")
     try:
-        ja, en = rule_lines(ja_meta, ja_body), rule_lines(en_meta, en_body)
+        ja = rule_lines(json.loads(ja_meta)["description"], ja_body)
+        en = rule_lines(json.loads(en_meta)["description"], en_body)
     except (json.JSONDecodeError, KeyError, TypeError):
         return (f"{name}: meta.json in commit {commit[:12]} is not a valid rule. "
                 f"delete rules.en/{name} to translate it in full, then rerun")
@@ -328,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     # Phase 1: decide every rule before any translator call, so an error in
     # one rule costs no calls and writes nothing.
     if not rules_dir.is_dir():
-        print("rules.ja: missing rules.ja. create rules.ja", file=sys.stderr)
+        print(MISSING_RULES_JA, file=sys.stderr)
         return 1
     available = sorted(p.name for p in rules_dir.iterdir() if p.is_dir())
     errors = [
@@ -349,13 +306,12 @@ def main(argv: list[str] | None = None) -> int:
     decided: list[tuple[str, dict, list[str], tuple[list[str], list[str]] | None,
                         bool, bool]] = []
     for name in selected:
-        valid = validate_rule(rules_dir / name)
-        if isinstance(valid, str):
-            errors.append(valid)
+        rule = load_rule(rules_dir / name)
+        if isinstance(rule, str):
+            errors.append(rule)
             continue
-        meta_text, body_text = valid
-        ja_lines = rule_lines(meta_text, body_text)
-        cursor = json.loads(meta_text)["cursor"]
+        ja_lines = rule_lines(rule.description, rule.body.decode("utf-8"))
+        cursor = rule.cursor
         if not (root / "rules.en" / name).is_dir():
             decided.append((name, cursor, ja_lines, None, False, False))
             continue
