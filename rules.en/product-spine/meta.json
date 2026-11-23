@@ -1,0 +1,7 @@
+{
+  "description": "The spine of the product. Jobs, non-goals, roles, and defaults for unknown input. Use when starting new work, designing, setting refactoring direction, discussing scope, or checking the gap between the SPEC and the implementation",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

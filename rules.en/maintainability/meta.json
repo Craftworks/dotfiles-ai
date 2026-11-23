@@ -1,0 +1,7 @@
+{
+  "description": "Readability, naming, locality, and testability. Use for all implementation work, reviews, renaming, cleanup, and when adding tests",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

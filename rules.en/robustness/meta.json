@@ -1,0 +1,7 @@
+{
+  "description": "Error handling, invariants, boundary validation, and no silent failures. Use when fixing bugs, handling exceptions, working with I/O, integrating with external systems, or dealing with concurrency",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

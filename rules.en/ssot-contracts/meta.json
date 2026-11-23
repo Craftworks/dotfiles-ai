@@ -1,0 +1,7 @@
+{
+  "description": "Use for SSOT, separating configuration from code, stage contracts, and keeping a single source of truth for operations. Applies to profiles, extracting config, splitting processes, IPC, deployment switchovers, and cleaning up duplicated management",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

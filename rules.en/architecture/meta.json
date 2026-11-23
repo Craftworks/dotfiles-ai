@@ -1,0 +1,7 @@
+{
+  "description": "Architecture boundaries, dependency direction, and a ban on over-abstraction. Use when designing, refactoring, adding new modules, or changing layers",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": false
+  }
+}

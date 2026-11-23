@@ -1,0 +1,7 @@
+{
+  "description": "How to make changes. Small diffs, no speculative implementation, follow existing patterns, no silent failures, validate at boundaries. Use when starting implementation, fixes, PRs, or refactors",
+  "cursor": {
+    "globs": null,
+    "alwaysApply": true
+  }
+}
