@@ -4,10 +4,12 @@
 
 AI 開発環境の設定リポジトリ。Cursor / Claude Code / Muse Code の3者に共有する原則・ルール・スキルの正本とし、各ツールへはここから配置する。正本はリポジトリ直下（ルールは `rules.ja/`、スキルは `skills.ja/`）に置く。ルールはプラットフォーム別ディレクトリ（`.cursor/`、`.claude/`）へ生成し、スキルはリポジトリ内にコピーを持たず、各ツールが読むホームディレクトリの置き場へ直接インストールする。
 
+本 README は英語版が正典であり、`README.ja.md` は同じコミットで同期させる（`scripts/README.md` と `scripts/README.ja.md` も同様）。
+
 ## 役割分担
 
 - **人間 ＝ 承認者**：設計・脆弱性・性能・コストを判断し、証拠（テスト結果、差分、計測）で承認する
-- **Cursor ＝ 承認者のコックピット**：diff を読み、コードを辿り、承認するための窓。Cursor 自身のエージェントとクラウド機能は使わない（GitHub 操作は claude が `gh` で行う）
+- **Cursor ＝ 承認者のコックピット**：diff を読み、コードを辿り、承認するための窓。エージェントは git 操作に使う（IDE の方が見やすく使いやすいため）。クラウド機能は使わない
 - **claude ＝ 手**：実装とテストを行う
 - **muse ＝ 秘書**：実装はしない。タスクの分解、claude への派遣、状態管理、報告を行う。具体的な職務は今後決める
 
@@ -30,7 +32,7 @@ dotfiles-ai/
 ## 原則の共有方法
 
 - **スキル**は Agent Skills 標準（`SKILL.md`）で3者にそのまま共有できる。Claude Code は `~/.claude/skills/`、Cursor は `~/.cursor/skills/` のほか互換パスとして `~/.claude/skills/` も読む
-- **ルール**は形式がプラットフォームごとに異なる（Cursor は `.mdc`、Claude Code は `CLAUDE.md` と `paths:` つきルール、muse は素の Markdown）。正本は `rules.ja/` に置く：ルールごとに `body.md`（本文）と `meta.json`（description と、プラットフォーム固有項目を名前空間に分けたもの）に分離している。各形式への生成は `scripts/build-rules` が正本から行う（仕様は確定、実装は未実施）。それまでは既存の `.cursor/rules` が現行の配布物である。公開用の英語版 `rules.en/` は `scripts/translate-rules` が生成し、正本は日本語のままにする
+- **ルール**は形式がプラットフォームごとに異なる（Cursor は `.mdc`、Claude Code は `CLAUDE.md` と `paths:` つきルール、muse は素の Markdown）。正本は `rules.ja/` に置く：ルールごとに `body.md`（本文）と `meta.json`（description と、プラットフォーム固有項目を名前空間に分けたもの）に分離している。各形式への生成は `scripts/build-rules` が正本から行い、スキルのインストールは `scripts/install-skills` が行う。ルールとスキルはホームディレクトリへのインストール（`~/.claude/rules/`、`~/.cursor/rules/`、`~/.claude/skills/`、`~/.cursor/skills/`）から効き、このリポジトリは正本とスクリプトだけを持ち、プロジェクトレベルのルールやスキルは持たない。編集は正本に対して行い、生成物やインストール済みのファイルは編集しない。公開用の英語版 `rules.en/` は `scripts/translate-rules` が生成し、正本は日本語のままにする
 
 ## 運用原則
 
@@ -42,8 +44,7 @@ dotfiles-ai/
 
 ## 今後の予定（未実施）
 
-- `scripts/` の仕様にある生成スクリプト（build-rules、translate-rules）を実装し、`rules.en/` を生成する
-- `.claude/` へ Claude Code 側の設定（CLAUDE.md、サブエージェント定義、フック）を追加する
+- `.claude/` へ Claude Code 側の設定（サブエージェント定義、フック）を追加する
 - 原則の索引（どの原則がどの層に落ちているか）を作る
 - 配置（インストール）手順をスクリプト化する
 
