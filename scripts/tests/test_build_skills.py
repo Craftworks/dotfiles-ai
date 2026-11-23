@@ -40,22 +40,22 @@ def write_skill(root: Path, name: str, description: str = "A skill.") -> None:
     (skill / "notes.md").write_text("aux\n", encoding="utf-8")
 
 
-def link_paths(names: list[str]) -> list[str]:
+def link_paths(names: list[str], destinations: tuple[str, ...] = DESTINATIONS) -> list[str]:
     paths = []
     for name in names:
-        for dest in DESTINATIONS:
+        for dest in destinations:
             paths.append(f"{dest}/{name}")
     return paths
 
 
-def install_report(home: Path, names: list[str]) -> str:
-    paths = link_paths(names)
+def install_report(home: Path, names: list[str], destinations: tuple[str, ...] = DESTINATIONS) -> str:
+    paths = link_paths(names, destinations)
     summary = f"installed {len(names)} skills from skills.ja under {home}"
     return summary + "\n" + "".join(f"{path}\n" for path in paths)
 
 
-def check_report(home: Path, names: list[str]) -> str:
-    paths = link_paths(names)
+def check_report(home: Path, names: list[str], destinations: tuple[str, ...] = DESTINATIONS) -> str:
+    paths = link_paths(names, destinations)
     summary = (
         f"checked {len(paths)} links from skills.ja under {home}; "
         "all match; wrote nothing"
@@ -681,6 +681,216 @@ class NormalRunTest(unittest.TestCase):
             "alpha: conflict at .claude/skills/alpha. "
             "remove the conflicting entry by hand\n",
         )
+        self.assertEqual(home_entries(home), before)
+
+
+class ToolSelectionTest(unittest.TestCase):
+    def test_cursor_installs_only_the_cursor_destination(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "alpha")
+        write_skill(root, "beta")
+
+        result = run_build(root, home, "--tool", "cursor")
+
+        cursor = (".cursor/skills",)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(result.stdout, install_report(home, ["alpha", "beta"], cursor))
+        self.assertEqual(result.stderr, "")
+        self.assertFalse((home / ".claude").exists())
+        for name in ("alpha", "beta"):
+            link = home / ".cursor" / "skills" / name
+            self.assertEqual(link.readlink(), root / "skills.ja" / name)
+
+    def test_claude_installs_only_the_claude_destination(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "alpha")
+
+        result = run_build(root, home, "--tool", "claude")
+
+        claude = (".claude/skills",)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(result.stdout, install_report(home, ["alpha"], claude))
+        self.assertEqual(result.stderr, "")
+        self.assertFalse((home / ".cursor").exists())
+        self.assertEqual(
+            (home / ".claude" / "skills" / "alpha").readlink(),
+            root / "skills.ja" / "alpha",
+        )
+
+    def test_conflict_on_the_unselected_side_does_not_block(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "alpha")
+        blocked = home / ".claude" / "skills" / "alpha"
+        blocked.parent.mkdir(parents=True)
+        blocked.mkdir()
+        (blocked / "owned.txt").write_text("keep\n", encoding="utf-8")
+
+        def claude_entries() -> dict:
+            return {
+                key: value
+                for key, value in home_entries(home).items()
+                if key == ".claude" or key.startswith(".claude/")
+            }
+
+        before = claude_entries()
+
+        result = run_build(root, home, "--tool", "cursor")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            (home / ".cursor" / "skills" / "alpha").readlink(),
+            root / "skills.ja" / "alpha",
+        )
+        self.assertEqual(claude_entries(), before)
+
+    def test_check_names_only_the_selected_destination(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "alpha")
+        before = home_entries(home)
+
+        result = run_build(root, home, "--check", "--tool", "cursor")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr,
+            "links do not match skills.ja. --check changes nothing.\n"
+            "missing: .cursor/skills\n"
+            "run without --check to install the links; "
+            "conflicting entries must be removed by hand.\n",
+        )
+        self.assertNotIn(".claude", result.stderr)
+        self.assertEqual(home_entries(home), before)
+
+    def test_unknown_tool_changes_nothing(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        (home / "marker.txt").write_text("keep\n", encoding="utf-8")
+        before = home_entries(home)
+
+        result = run_build(root, home, "--tool", "both")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr,
+            'tool: unknown tool "both". pass --tool cursor or --tool claude\n',
+        )
+        self.assertEqual(home_entries(home), before)
+
+    def test_repeated_tool_changes_nothing(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "alpha")
+        (home / "marker.txt").write_text("keep\n", encoding="utf-8")
+        before = home_entries(home)
+
+        result = run_build(root, home, "--tool", "cursor", "--tool", "claude")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr,
+            "tool: --tool was given more than once. pass it once\n",
+        )
+        self.assertEqual(home_entries(home), before)
+
+    def test_synced_is_an_ordinary_skill_for_cursor_only(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "synced")
+
+        result = run_build(root, home, "--tool", "cursor")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(result.stdout, install_report(home, ["synced"], (".cursor/skills",)))
+        self.assertEqual(
+            (home / ".cursor" / "skills" / "synced").readlink(),
+            root / "skills.ja" / "synced",
+        )
+        self.assertFalse((home / ".claude").exists())
+
+    def test_claude_still_rejects_synced(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "synced")
+        before = home_entries(home)
+
+        result = run_build(root, home, "--tool", "claude")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(
+            result.stderr,
+            'synced: name "synced" is reserved. rename the skill\n',
+        )
+        self.assertEqual(home_entries(home), before)
+
+    def test_removes_stale_links_only_on_the_selected_side(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "alpha")
+        write_skill(root, "beta")
+        self.assertEqual(run_build(root, home).returncode, 0)
+        shutil.rmtree(root / "skills.ja" / "beta")
+        claude_beta = home / ".claude" / "skills" / "beta"
+
+        result = run_build(root, home, "--tool", "cursor")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("removed: .cursor/skills/beta\n", result.stdout)
+        self.assertNotIn("removed: .claude/skills/beta", result.stdout)
+        self.assertFalse(os.path.lexists(home / ".cursor" / "skills" / "beta"))
+        self.assertTrue(claude_beta.is_symlink())
+        self.assertEqual(claude_beta.readlink(), root / "skills.ja" / "beta")
+
+    def test_repairs_only_the_selected_side(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "alpha")
+        self.assertEqual(run_build(root, home).returncode, 0)
+        moved = root.parent / f"{root.name}-moved"
+        shutil.move(root, moved)
+        self.addCleanup(shutil.rmtree, moved, True)
+        old = root / "skills.ja" / "alpha"
+
+        result = run_build(moved, home, "--tool", "cursor")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            (home / ".cursor" / "skills" / "alpha").readlink(),
+            moved / "skills.ja" / "alpha",
+        )
+        self.assertEqual((home / ".claude" / "skills" / "alpha").readlink(), old)
+
+    def test_check_passes_for_the_selected_destination(self):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        write_skill(root, "alpha")
+        self.assertEqual(run_build(root, home, "--tool", "cursor").returncode, 0)
+        before = home_entries(home)
+
+        result = run_build(root, home, "--check", "--tool", "cursor")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            result.stdout,
+            check_report(home, ["alpha"], (".cursor/skills",)),
+        )
+        self.assertEqual(result.stderr, "")
         self.assertEqual(home_entries(home), before)
 
 
