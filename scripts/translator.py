@@ -37,6 +37,9 @@ PROMPT = (
 
 NEXT_ACTION = "make claude -p succeed, then rerun"
 
+# Seconds kill_tree waits for a killed translator to exit.
+KILL_WAIT = 10
+
 # Kana, CJK ideographs, and CJK and full-width punctuation. Any of these in the
 # output means a line was not translated.
 JAPANESE = re.compile(r"[\u3000-\u303f\u3040-\u30ff\u4e00-\u9fff\uff00-\uffef]")
@@ -62,13 +65,22 @@ def reset_translation() -> None:
         _live.clear()
 
 
-def cancel_translation() -> None:
-    """Stop calls that have not finished. The run writes nothing after this."""
+def cancel_translation() -> list[str]:
+    """Stop calls that have not finished. The run writes nothing after this.
+
+    Returns one line for each translator process that could not be stopped,
+    for the caller to print; every live process is tried either way.
+    """
     _cancel.set()
     with _live_lock:
         procs = list(_live)
+    left: list[str] = []
     for process in procs:
-        kill_tree(process)
+        try:
+            kill_tree(process)
+        except TranslatorFailed as failure:
+            left.append(f"{failure}. stop process {process.pid} by hand")
+    return left
 
 
 def marker(line: str) -> str:
@@ -189,18 +201,32 @@ def kept_pairs(prev_ja: list[str], prev_en: list[str], ja: list[str]) -> list[li
 
 
 def kill_tree(process: subprocess.Popen) -> None:
+    """Kill the process and its children, or raise TranslatorFailed naming
+    the process when it cannot be stopped."""
     # claude may start children of its own; a timeout must not leave them.
     try:
         if os.name == "nt":
-            subprocess.run(
+            result = subprocess.run(
                 ["taskkill", "/T", "/F", "/PID", str(process.pid)],
                 capture_output=True,
             )
+            if result.returncode != 0 and process.poll() is None:
+                detail = result.stderr.decode("utf-8", "replace").strip().splitlines()
+                reason = f" ({detail[0]})" if detail else ""
+                raise TranslatorFailed(
+                    f"taskkill could not stop translator process {process.pid}{reason}"
+                )
         else:
             os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
-    process.wait()
+    try:
+        process.wait(timeout=KILL_WAIT)
+    except subprocess.TimeoutExpired:
+        raise TranslatorFailed(
+            f"translator process {process.pid} was still running "
+            f"{KILL_WAIT} seconds after it was killed"
+        ) from None
 
 
 def call_translator(translator: str, ja: list[str], reference: list[list[str]],
@@ -271,6 +297,10 @@ def call_translator(translator: str, ja: list[str], reference: list[list[str]],
 
 
 def write_atomically(path, data: str) -> None:
+    """Write data as UTF-8 to path through a temporary file in the same
+    directory, then os.replace it over path. A reader sees the old file or
+    the whole new one, never a half-written file, and an interrupted run
+    leaves path as it was (the temporary file may remain beside it)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     with os.fdopen(fd, "wb") as handle:

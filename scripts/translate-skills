@@ -246,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     planned: list[tuple[str, str]] = []
     if targets:
         error: dict[str, str] = {}
+        left: list[str] = []
         error_lock = threading.Lock()
 
         def work(target: MarkdownTarget) -> str | None:
@@ -260,13 +261,15 @@ def main(argv: list[str] | None = None) -> int:
                     if first:
                         error["message"] = f"{target.rel}: {failure}. {NEXT_ACTION}"
                 if first:
-                    cancel_translation()
+                    left.extend(cancel_translation())
                 return None
 
         with ThreadPoolExecutor(max_workers=jobs) as pool:
             results = list(pool.map(work, targets))
         if "message" in error:
             print(error["message"], file=sys.stderr)
+            for line in left:
+                print(line, file=sys.stderr)
             return 1
         for target, text in zip(targets, results):
             planned.append((target.rel, text))
