@@ -21,7 +21,7 @@
 - 入力は選択した版のみ。出力は入力の純粋な関数であり、同じ入力からは常に同じバイト列が出る（冪等）
 - 生成物には目印のヘッダを付けない。正本とのズレはファイル内の文言ではなく `--check` で検出する
 - `--check` は書き込まず、生成物と選択した版の一致だけを検査し、ズレたファイル名を示して異常終了する
-- `--lang <言語>` は入力の版 `rules.<言語>/` を選び、既定は `en` である。言語を一覧で照合することはしない。その版のディレクトリが存在する言語なら生成できる。`--lang` を2回以上渡すと、何かを読む前・書く前に `lang: --lang was given more than once. pass it once` で異常終了する。生成物には、どの言語から作ったかが記録されない。したがって生成と配置は、同じ言語で続けて行う
+- `--lang <言語>` は入力の版 `rules.<言語>/` を選び、既定は `en` である。言語を一覧で照合することはしない。その版のディレクトリが存在する言語なら生成できる。言語コードは英字・数字・`-`・`_` だけで書く（値は版ディレクトリ名の一部になるため、リポジトリの外へ出る値を防ぐ）。合わない値は、版ディレクトリを見る前に `lang: "<値>" is not a language code. pass --lang with letters, digits, - or _, such as en or ja` で異常終了し、何も変えない。`--lang` を2回以上渡すと、何かを読む前・書く前に `lang: --lang was given more than once. pass it once` で異常終了する。生成物には、どの言語から作ったかが記録されない。したがって生成と配置は、同じ言語で続けて行う
 - 報告も契約の一部である。通常実行は、何をしたかを標準出力に出す：要約行（`wrote <件数> files from rules.<lang> under <ルート>`）に続けて、書き込んだ全ファイルのパスを出す。`--check` の成功時は `checked <件数> files from rules.<lang> under <ルート>; all match; wrote nothing` に続けて、検査した全パスを出す。無言の成功は欠陥である：何も起きなかったことと区別できない
 - `--check` の失敗時は、標準エラーに要約行、問題ごとの行、次のアクション（`run without --check to write them.`）を出す。ズレたファイルと欠けたファイルは個別に名前を出す（`differs: <パス>`、`missing: <パス>`）。出力ディレクトリ自体が無い・空の場合は、配下のファイルを列挙せず、ディレクトリを一度だけ名指す（`missing: <ディレクトリ>`、`empty: <ディレクトリ>`）。空とは、ディレクトリにエントリが1つも無いことである。ディレクトリが存在し、無関係なファイルを含め何かが入っている場合は空ではなく、欠けた生成物をそれぞれ `missing: <パス>` で名指す。問題は、オペレータが操作する単位で報告する
 
@@ -71,7 +71,7 @@
 - `--check` の失敗時は、標準エラーに要約行、問題ごとの行、次のアクション（`run without --check to install the links; conflicting entries must be removed by hand.`）を出す。問題は、オペレータが操作する単位で名前を出す：エントリが無い場合は `missing: <パス>`、リンク先が違う・壊れている場合は `differs: <パス>`、スキルが消えたリンクは `stale: <パス>`、触ってはいけない妨害エントリは `conflict: <パス>`。宛先ディレクトリ自体が無い場合は、配下のリンクを列挙せず、ディレクトリを一度だけ名指す（`missing: <ディレクトリ>`）
 - 2回連続実行では、2回目は何も変わらない（冪等）
 - `--tool <cursor|claude>` は、実行の対象を一方の宛先に絞る。`cursor` は `<ホーム>/.cursor/skills`、`claude` は `<ホーム>/.claude/skills` である。`--tool` を省くと両方の宛先が選ばれ、これが上のすべての場合である。選ばれなかった宛先はこの実行の対象外である：作らない、中を見ない、報告しない。そこにある衝突や残骸リンクは実行に影響せず、失敗した実行を含め、前後で同一である。`cursor` と `claude` 以外の値は `tool: unknown tool "<値>". pass --tool cursor or --tool claude` で異常終了する。`--tool` を2回以上渡したときは `tool: --tool was given more than once. pass it once` で異常終了する。どちらのエラーも、宛先を読む前・書く前に出し、何も変えない。要約の件数は、通常実行ではスキル数、`--check` ではリンク数のままである。宛先が一方だけのとき、この二つの数は一致し、表示するパスはすべて選択した宛先の下にある
-- `--lang <言語>` は、配置する版 `skills.<言語>/` を選び、既定は `en` である。言語を一覧で照合することはしない。その版のディレクトリが存在する言語なら配置できる。`--lang` を2回以上渡すと、宛先を読む前・書く前に `lang: --lang was given more than once. pass it once` で異常終了し、何も変えない
+- `--lang <言語>` は、配置する版 `skills.<言語>/` を選び、既定は `en` である。言語を一覧で照合することはしない。その版のディレクトリが存在する言語なら配置できる。言語コードは英字・数字・`-`・`_` だけで書く（値は版ディレクトリ名の一部になるため、リポジトリの外へ出る値を防ぐ）。合わない値は、版ディレクトリを見る前に `lang: "<値>" is not a language code. pass --lang with letters, digits, - or _, such as en or ja` で異常終了し、何も変えない。`--lang` を2回以上渡すと、宛先を読む前・書く前に `lang: --lang was given more than once. pass it once` で異常終了し、何も変えない
 
 非目標：スキルファイルのコピー、ルールの配置（`install-rules` がリンクする）、実ファイル・実ディレクトリの削除、プラグインスキルや claude.ai 同期スキルの管理、監視モード、Windows 対応（シンボリックリンクに特権が要る環境は前提にしない）。
 
@@ -108,7 +108,7 @@
 - 失敗した `--check` は、標準エラーに `links do not match rules.<lang>. --check changes nothing.`、問題1件につき1行、次のアクション（`run without --check to install the links; conflicting entries must be removed by hand.`）を出す。問題はオペレータが操作する単位で名指す。エントリが無いときは `missing: <パス>`、リンクが違う配布物を指すときは `differs: <パス>`、ルールが消えたリンクは `stale: <パス>`、触れてはならないエントリは `conflict: <パス>` である。宛先ディレクトリ自体が無いときは、そのディレクトリを1回だけ名指し（`missing: <ディレクトリ>`）、その下のリンクは列挙しない
 - 2回連続実行では、2回目は何も変わらない（冪等）
 - `--tool <cursor|claude>` は、実行の対象を一方の宛先に絞る。`cursor` は `<ホーム>/.cursor/rules`、`claude` は `<ホーム>/.claude/rules` である。`--tool` を省くと両方の宛先が選ばれる。選ばれなかった宛先はこの実行の対象外である：作らない、中を見ない、報告しない。そこにある衝突や残骸リンクは実行に影響しない。配布物を要求するのは選択した宛先だけである。`cursor` と `claude` 以外の値は `tool: unknown tool "<値>". pass --tool cursor or --tool claude` で異常終了する。`--tool` を2回以上渡したときは `tool: --tool was given more than once. pass it once` で異常終了する。どちらのエラーも、何かを読む前・書く前に出し、何も変えない。通常実行の件数はファイル数、`--check` の件数はリンク数である。宛先が一方だけのとき、この二つの数は一致し、表示するパスはすべて選択した宛先の下にある
-- `--lang <言語>` は、この実行が使う版 `rules.<言語>/` を選び、既定は `en` である。言語を一覧で照合することはしない。その版のディレクトリが存在する言語なら選べる。`--lang` を2回以上渡すと、何かを読む前・書く前に `lang: --lang was given more than once. pass it once` で異常終了し、何も変えない
+- `--lang <言語>` は、この実行が使う版 `rules.<言語>/` を選び、既定は `en` である。言語を一覧で照合することはしない。その版のディレクトリが存在する言語なら選べる。言語コードは英字・数字・`-`・`_` だけで書く（値は版ディレクトリ名の一部になるため、リポジトリの外へ出る値を防ぐ）。合わない値は、版ディレクトリを見る前に `lang: "<値>" is not a language code. pass --lang with letters, digits, - or _, such as en or ja` で異常終了し、何も変えない。`--lang` を2回以上渡すと、何かを読む前・書く前に `lang: --lang was given more than once. pass it once` で異常終了し、何も変えない
 
 非目標：配布物の生成（`build-rules` が行う）、バイト列をホームへコピーすること、実ファイル・実ディレクトリの削除、リポジトリから配布物を消すこと、翻訳、監視モード、Windows 対応（シンボリックリンクに特権が要る環境は前提にしない）。
 
@@ -148,7 +148,7 @@
 
 非目標：Google Translate、DeepL、API キーを要する翻訳器。`rules.<from>/` からルールを消したときの `rules.<to>/<名前>/` の削除（手で行う）。リポジトリを変える git 操作（スクリプトは履歴を読むだけで、コミットはユーザーが行う）。並列呼び出し。ウォッチモード。
 
-実装：Python 3、標準ライブラリのみ、拡張子なしのスクリプトファイル。原文の版の読み込みと検証に共有の `scripts/rule_source.py` を使うことを含め、build-rules と同じ流儀とする。コマンドラインは `translate-rules [--from <言語>] [--to <言語>] [--translator <コマンド>] [--timeout <秒>] [<名前>...]`。対象のリポジトリはスクリプトのあるリポジトリである。`--from` の既定は `ja`、`--to` の既定は `en` で、どちらかを2回以上渡すと、何かを読む前・書く前に `from: --from was given more than once. pass it once` または `to: --to was given more than once. pass it once` で異常終了する。`--translator` は `claude` コマンドを置き換えるもので、テストで偽の翻訳器を走らせるためにある。偽の翻訳器は同じ引数と標準入力で呼ばれる。Mac と Windows の両方で動くこと：コマンドは `shutil.which` で解決する（`claude.exe` または `claude.cmd`）。標準入出力は UTF-8 を明示する。改行は読み込み時に LF に揃え、LF で書く。タイムアウトした翻訳器は子プロセスごと終了させる。`taskkill` が失敗したとき、または終了させてから10秒たってもプロセスが残るときは、待ち続けずにそのプロセスを名指すエラーにする（`scripts/tests/test_translator.py`）。
+実装：Python 3、標準ライブラリのみ、拡張子なしのスクリプトファイル。原文の版の読み込みと検証に共有の `scripts/rule_source.py` を使うことを含め、build-rules と同じ流儀とする。コマンドラインは `translate-rules [--from <言語>] [--to <言語>] [--translator <コマンド>] [--timeout <秒>] [<名前>...]`。対象のリポジトリはスクリプトのあるリポジトリである。`--from` の既定は `ja`、`--to` の既定は `en` で、どちらかを2回以上渡すと、何かを読む前・書く前に `from: --from was given more than once. pass it once` または `to: --to was given more than once. pass it once` で異常終了する。言語コードは英字・数字・`-`・`_` だけで、合わない値は、版ディレクトリを見る前に `from: "<値>" is not a language code. pass --from with letters, digits, - or _, such as en or ja`（`--to` なら `to: "<値>" is not a language code. pass --to with letters, digits, - or _, such as en or ja`）で異常終了する。`--from` と `--to` が同じ言語のときは、同じ版を自分自身へ訳すことになるので、何かを読む前・書く前に `to: --from and --to are both <言語>. pass two different languages` で異常終了する。`--translator` は `claude` コマンドを置き換えるもので、テストで偽の翻訳器を走らせるためにある。偽の翻訳器は同じ引数と標準入力で呼ばれる。Mac と Windows の両方で動くこと：コマンドは `shutil.which` で解決する（`claude.exe` または `claude.cmd`）。標準入出力は UTF-8 を明示する。改行は読み込み時に LF に揃え、LF で書く。タイムアウトした翻訳器は子プロセスごと終了させる。`taskkill` が失敗したとき、または終了させてから10秒たってもプロセスが残るときは、待ち続けずにそのプロセスを名指すエラーにする（`scripts/tests/test_translator.py`）。
 
 テスト：テスト先行で作る。スクリプトは共有モジュールごと一時的な git リポジトリの `scripts/` へコピーし、そこから subprocess として起動し、`--translator` で偽の翻訳器を指す。自動テストは本物の `claude` を呼ばない。ケース：新しいルールを全文訳する。変わった行が置き換わり、変わっていない行は前回の英語をバイト単位で保つ。description だけの変更。`cursor` だけの変更は、翻訳器を呼ばずにコピーする。変わっていないルールは翻訳器を呼ばない。ルール名で絞れ、存在しない名前はエラー。`rules.<to>/<名前>` のコミットしていない変更と、行数が違う基準の対はエラー。git リポジトリでないルートと、`rules.<from>/<名前>` を含まない基準コミットはエラー。変わった行の古い英語は翻訳器に見せない。翻訳器が無い、0以外で終了する、空の出力または JSON でない出力、行数違い、記号の変化、原文の残り、タイムアウト超過は、どれも何も書かない。1つが失敗するルールの混在では、どのルールも書かない。出力の報告（進捗行、要約行の全文、書いた全パス）を検証する。明示した組（`--from en --to fr`）の実行が、その組を訳して `rules.fr/` を作ること。本物の `claude -p` で1ルールを通す手動スモークで、フラグとログインを確かめる。
 
@@ -168,7 +168,7 @@
 
 - 翻訳器の呼び出しは Markdown 1ファイルにつき1回で、JSON の形、モデル、プロンプト、隔離フラグは translate-rules と同じである（`scripts/translator.py`）。スキル1つを1回にはしない。ファイルをまとめた長い依頼は、実測した行の契約の外である
 - `SKILL.md` は `description` と本文を訳す。`name` はディレクトリ名のままで、翻訳器に送らない。他の frontmatter は写す。`basis.md` は英語版に含めない。Markdown でないファイルはバイト単位で写し、呼び出しはしない
-- Markdown のすべての行を送る。コードフェンスの中も送る。そこにある原文も訳す。コメントも訳す。コードのトークンと文字列リテラルは残す。フェンスの記号はフェンスのまま残り、すでに英語の文面はそのまま残る。それは `scripts/translator.py` の行の契約である
+- Markdown のすべての行を送る。コードフェンスの中も送る。そこにある原文も訳す。コメントも訳す。コードのトークンと文字列リテラルは残す。フェンスの記号はフェンスのまま残り、すでに訳先の言語になっている文面はそのまま残る。それは `scripts/translator.py` の行の契約である
 - 行の契約、git の基準、変わっていない行を戻す処理は、ファイルごとである。基準は `skills.<to>/<スキル>/<パス>` を最後に変えた commit である。変わっていない行は前回の訳文をバイト単位で保つ。変わった行の古い訳文は送らない。`skills.<to>/<スキル>/` に未コミットの変更があると異常終了し、何も書かない
 - 呼び出しは `--jobs` 本同時である（既定4）。最初の行は、1ファイルなら `translating <件数> file, <本数> at a time`、それ以外は `translating <件数> files, <本数> at a time` である。呼び出しの開始は `translating <スキル>/<パス>`、写すファイルは `copying <スキル>/<パス>`、何も要らないファイルは `unchanged <スキル>/<パス>` である。失敗した呼び出しは、走っている呼び出しを止め、新しい呼び出しを始めず、`skills.<to>/` を実行前のままにする。エラーはファイル、原因、次のアクション（`make claude -p succeed, then rerun`）を出す。止められなかったプロセスは、その後に1行ずつ `stop process <pid> by hand` で終わる行として出す
 - 全部の呼び出しが成功してから、`wrote <件数> files from skills.<from> under <ルート>` と、書いた全パスを出す。書くものが無い実行は、その旨を出して何も書かない
@@ -176,7 +176,7 @@
 
 非目標：版のインストール（`install-skills` が行う）、`basis.md` の翻訳、全ファイルを1個の依頼にまとめること、`skills.<from>/` からスキルを消したときの `skills.<to>/<スキル>/` の削除（手で行う）、translate-rules の並列化（あちらは1本ずつを保つ）。
 
-実装：Python 3、標準ライブラリのみ。コマンドラインは `translate-skills [--from <言語>] [--to <言語>] [--translator <コマンド>] [--timeout <秒>] [--jobs <本数>] [<名前>...]`。対象のリポジトリはスクリプトのあるリポジトリである。`--from` の既定は `ja`、`--to` の既定は `en` で、どちらかを2回以上渡すと、何かを読む前・書く前に `from: --from was given more than once. pass it once` または `to: --to was given more than once. pass it once` で異常終了する。`--jobs` が1未満のときは `jobs: --jobs must be at least 1. pass --jobs 4` で異常終了し、何も変えない。
+実装：Python 3、標準ライブラリのみ。コマンドラインは `translate-skills [--from <言語>] [--to <言語>] [--translator <コマンド>] [--timeout <秒>] [--jobs <本数>] [<名前>...]`。対象のリポジトリはスクリプトのあるリポジトリである。`--from` の既定は `ja`、`--to` の既定は `en` で、どちらかを2回以上渡すと、何かを読む前・書く前に `from: --from was given more than once. pass it once` または `to: --to was given more than once. pass it once` で異常終了する。言語コードは英字・数字・`-`・`_` だけで、合わない値は、版ディレクトリを見る前に `from: "<値>" is not a language code. pass --from with letters, digits, - or _, such as en or ja`（`--to` なら `to: "<値>" is not a language code. pass --to with letters, digits, - or _, such as en or ja`）で異常終了する。`--from` と `--to` が同じ言語のときは、同じ版を自分自身へ訳すことになるので、何かを読む前・書く前に `to: --from and --to are both <言語>. pass two different languages` で異常終了する。`--jobs` が1未満のときは `jobs: --jobs must be at least 1. pass --jobs 4` で異常終了し、何も変えない。
 
 テスト：スクリプトを共有モジュールごと一時的な git リポジトリの `scripts/` へコピーし、そこから subprocess として起動する。`--translator` の偽翻訳器を使う。本物の `claude` は呼ばない。ケース：新しい `SKILL.md` は `name` を保ち、`description` と本文を訳す。フェンスの中は依頼にあり、出力では訳されている。`basis.md` は出さず、シェルスクリプトは写す。変わっていないスキルは呼び出さない。訳すファイルがあるとき、件数の行は `unchanged` と `copying` の行より先に出る。変わった行は新しい英語になり、その行の古い英語はプロンプトに無い。`--jobs 2` では2つの呼び出しが重なり、失敗した呼び出しは何も書かない。`--jobs 0` と `SKILL.md` の欠落は呼び出しをしない。明示した `--from en --to fr` の実行が、`skills.en/` から `skills.fr/` を作る。
 
