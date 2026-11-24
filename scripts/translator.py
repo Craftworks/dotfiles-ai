@@ -79,8 +79,9 @@ NEXT_ACTION = "make claude -p succeed, then rerun"
 # Seconds kill_tree waits for a killed translator to exit.
 KILL_WAIT = 10
 
-# Kana, CJK ideographs, and CJK and full-width punctuation. Any of these in the
-# output means a line was not translated.
+# Kana, CJK ideographs, and CJK and full-width punctuation. When the pair's
+# keeps_no_source_text is true, any of these in the output means a line was
+# not translated; for other pairs the output is not checked against it.
 JAPANESE = re.compile(r"[\u3000-\u303f\u3040-\u30ff\u4e00-\u9fff\uff00-\uffef]")
 MARKER = re.compile(r"^(\s*)(#{1,6}\s|[-*+]\s|\d+\.\s|>|\||```)")
 
