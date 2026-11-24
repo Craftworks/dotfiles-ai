@@ -12,6 +12,9 @@
 - Reach the goal with the smallest diff. Make drive-by fixes a separate change
 - If you break a public contract (API, types, CLI, file format), say so explicitly and provide a migration
 - Don't generate more than an approver can review
+- The README holds only the entry point (purpose, usage, pointers to other documents). Don't put normative rules in it
+- Put the why, contracts, non-goals, and completion criteria in the SPEC
+- Don't give work artifacts permanent file names
 
 ## Robustness gate
 
@@ -32,6 +35,8 @@
 - The next person can trace failures (errors, logs, or an explanation)
 - No temporary exploratory code or debugging leftovers remain
 - The diff contains no secrets or careless broad permissions
+- The spec is compressed to the level of a contract. Don't leave details the tests already pin down (error messages, report formats, enumerations of cases)
+- Criterion for keeping or cutting a sentence: if you can imagine an implementation that violates the sentence yet passes all the tests, either keep the sentence as a contract or strengthen the tests first
 
 ## Maintaining rules and skills
 
