@@ -15,8 +15,13 @@ Tests guarantee not that the implementation is correct, but that the behavior of
 - Integration tests at boundaries should be close to the real thing (real DB, real files, real samples). Mocks/stubs are limited to external services and network boundaries (see [mocking.md](mocking.md) for details)
 - Keep regression cases derived from real samples, real data, and real failures as assets. For real failures, turn them into cases before fixing
 - For bug fixes, write a test that reproduces the bug first. Parts that are key to the public contract or behavior should also be test-first
+- Do not weaken a test to make it pass (rewriting expected values, deleting assertions, skipping or disabling). A test's expected values are the authoritative source for fine details of behavior, and changing them amounts to changing the spec
+- If you judge that the expected value is what is wrong, stop the implementation. Show the approver which expected value in which test you want to change and why, and change it only after obtaining agreement
 - Keep tests deterministic (independent of execution order, time, network, and environment. Reset state for each test)
 - Keep them runnable with a single command and fast enough to run on every change. When they fail, leave output from which the cause can be traced
+- Before reporting completion, run the entire suite. Do not call it done after running only the tests you touched
+- Attach the commands you ran and their results to the report
+- List failures by test name, not by count. Do not omit failures that seem unrelated to the change
 - When the spec defines the format of errors (name, cause, next action), tests pin down that wording too. Do not settle for checking only the name or exit code
 - Verify the "process only after everything is gathered" property with cases that mix normal and abnormal. A single case lets an implementation that violates that property pass
 
