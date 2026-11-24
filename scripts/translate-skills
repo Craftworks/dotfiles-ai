@@ -55,7 +55,7 @@ def git_error(root: Path) -> str | None:
         return "skills.en: git was not found. install git, then rerun"
     except subprocess.CalledProcessError:
         return (f"skills.en: {root} is not a git repository. "
-                "run translate-skills on the repository root")
+                "run translate-skills in a git clone of this repository")
     return None
 
 
@@ -152,7 +152,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate the English edition skills.en from skills.ja.",
     )
-    parser.add_argument("--root", required=True, help="repository root that contains skills.ja")
     parser.add_argument("--translator", default="claude", help="translator command (default: claude)")
     parser.add_argument("--timeout", type=float, default=120,
                         help="seconds one translator call may take (default: 120)")
@@ -164,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.jobs < 1:
         print("jobs: --jobs must be at least 1. pass --jobs 4", file=sys.stderr)
         return 1
-    root = Path(args.root)
+    root = Path(__file__).resolve().parent.parent
     translator = shutil.which(args.translator) or args.translator
     skills_dir = root / "skills.ja"
     if not skills_dir.is_dir():

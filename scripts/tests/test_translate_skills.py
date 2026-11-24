@@ -14,9 +14,9 @@ import textwrap
 import unittest
 from pathlib import Path
 
+from support import install_scripts
+
 TESTS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = TESTS_DIR.parents[1]
-SCRIPT = REPO_ROOT / "scripts" / "translate-skills"
 
 FAKE_TRANSLATOR = textwrap.dedent(
     '''
@@ -72,7 +72,7 @@ def git(root: Path, *args: str) -> str:
 
 class Repo:
     def __init__(self, test: unittest.TestCase):
-        self.root = Path(tempfile.mkdtemp(prefix="translate-skills-test-"))
+        self.root = Path(Path(tempfile.mkdtemp(prefix="translate-skills-test-")).resolve())
         self.fake_dir = Path(tempfile.mkdtemp(prefix="translate-skills-fake-"))
         test.addCleanup(shutil.rmtree, self.root, True)
         test.addCleanup(shutil.rmtree, self.fake_dir, True)
@@ -109,7 +109,7 @@ class Repo:
     def run(self, *extra: str, sleep: str = "0") -> subprocess.CompletedProcess:
         env = dict(os.environ, FAKE_SLEEP=sleep)
         return subprocess.run(
-            [sys.executable, str(SCRIPT), "--root", str(self.root),
+            [sys.executable, str(install_scripts(self.root) / "translate-skills"),
              "--translator", str(self.translator), *extra],
             capture_output=True, text=True, encoding="utf-8", env=env,
         )

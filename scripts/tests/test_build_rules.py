@@ -19,6 +19,7 @@
 #   - --check names every drifted or missing deliverable. A name ending in
 #     .md does not count as the .mdc file. --check writes nothing.
 
+import os
 import re
 import shutil
 import subprocess
@@ -27,22 +28,24 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from support import install_scripts
+
 TESTS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = TESTS_DIR.parents[1]
-SCRIPT = REPO_ROOT / "scripts" / "build-rules"
 FIXTURES = TESTS_DIR / "fixtures"
 
 
 def run_build(root: Path, *extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--root", str(root), *extra],
+        [sys.executable, str(install_scripts(root) / "build-rules"), *extra],
         capture_output=True, text=True,
+        env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
     )
 
 
 def make_root(fixture: Path) -> Path:
-    tmp = Path(tempfile.mkdtemp(prefix="build-rules-test-"))
+    tmp = Path(tempfile.mkdtemp(prefix="build-rules-test-")).resolve()
     shutil.copytree(fixture / "rules.ja", tmp / "rules.ja")
+    install_scripts(tmp)
     return tmp
 
 

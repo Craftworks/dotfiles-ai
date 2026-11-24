@@ -16,9 +16,9 @@ import textwrap
 import unittest
 from pathlib import Path
 
+from support import install_scripts
+
 TESTS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = TESTS_DIR.parents[1]
-SCRIPT = REPO_ROOT / "scripts" / "translate-rules"
 
 FAKE_TRANSLATOR = textwrap.dedent(
     '''
@@ -61,7 +61,7 @@ class Repo:
     """A temporary git repository with rules.ja and a fake translator."""
 
     def __init__(self, test: unittest.TestCase):
-        self.root = Path(tempfile.mkdtemp(prefix="translate-rules-test-"))
+        self.root = Path(Path(tempfile.mkdtemp(prefix="translate-rules-test-")).resolve())
         self.fake_dir = Path(tempfile.mkdtemp(prefix="translate-rules-fake-"))
         test.addCleanup(shutil.rmtree, self.root, True)
         test.addCleanup(shutil.rmtree, self.fake_dir, True)
@@ -124,7 +124,7 @@ class Repo:
     def run(self, *extra: str, mode: str = "") -> subprocess.CompletedProcess:
         env = dict(os.environ, FAKE_MODE=mode)
         return subprocess.run(
-            [sys.executable, str(SCRIPT), "--root", str(self.root),
+            [sys.executable, str(install_scripts(self.root) / "translate-rules"),
              "--translator", str(self.translator), *extra],
             capture_output=True, text=True, encoding="utf-8", env=env,
         )
@@ -372,7 +372,7 @@ class BasePairErrorTest(unittest.TestCase):
         self.assert_nothing_happened(
             repo, result, before,
             f"rules.en: {repo.root} is not a git repository. "
-            "run translate-rules on the repository root\n",
+            "run translate-rules in a git clone of this repository\n",
         )
 
     def test_a_base_commit_without_the_japanese_rule_is_an_error(self):
@@ -585,7 +585,7 @@ class TranslatorFailureTest(unittest.TestCase):
     def test_a_missing_translator(self):
         missing = str(self.repo.fake_dir / "no-such-claude")
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--root", str(self.repo.root),
+            [sys.executable, str(install_scripts(self.repo.root) / "translate-rules"),
              "--translator", missing],
             capture_output=True, text=True, encoding="utf-8",
         )

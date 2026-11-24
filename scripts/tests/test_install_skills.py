@@ -11,22 +11,25 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from support import install_scripts
+
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "install-skills"
+NAME = "install-skills"
 DESTINATIONS = (".claude/skills", ".cursor/skills")
 
 
 def run_build(root: Path, home: Path, *extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--root", str(root), "--home", str(home), *extra],
+        [sys.executable, str(install_scripts(root) / NAME), "--home", str(home), *extra],
         capture_output=True, text=True,
     )
 
 
 def make_dirs() -> tuple[Path, Path]:
-    root = Path(tempfile.mkdtemp(prefix="install-skills-test-"))
-    home = Path(tempfile.mkdtemp(prefix="install-skills-home-"))
+    root = Path(tempfile.mkdtemp(prefix="install-skills-test-")).resolve()
+    home = Path(tempfile.mkdtemp(prefix="install-skills-home-")).resolve()
     return root, home
 
 
@@ -84,14 +87,15 @@ class FreshInstallTest(unittest.TestCase):
                 self.assertEqual(link.readlink(), target)
                 self.assertEqual((link / "notes.md").read_text(encoding="utf-8"), "aux\n")
 
-    def test_relative_root_still_links_with_an_absolute_target(self):
+    def test_relative_script_path_still_links_with_an_absolute_target(self):
         root, home = make_dirs()
         self.addCleanup(shutil.rmtree, root, True)
         self.addCleanup(shutil.rmtree, home, True)
         write_skill(root, "alpha")
+        install_scripts(root)
 
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--root", ".", "--home", str(home)],
+            [sys.executable, "scripts/install-skills", "--home", str(home)],
             cwd=root,
             capture_output=True,
             text=True,
@@ -622,7 +626,7 @@ class UnownedEntriesTest(unittest.TestCase):
 
 class RealSkillsTest(unittest.TestCase):
     def test_real_skills_link_into_a_temporary_home(self):
-        home = Path(tempfile.mkdtemp(prefix="install-skills-home-"))
+        home = Path(tempfile.mkdtemp(prefix="install-skills-home-")).resolve()
         self.addCleanup(shutil.rmtree, home, True)
         names = sorted(
             p.name for p in (REPO_ROOT / "skills.ja").iterdir() if p.is_dir()
@@ -642,8 +646,8 @@ class RealSkillsTest(unittest.TestCase):
                 self.assertEqual(link.readlink(), target)
                 self.assertTrue((link / "SKILL.md").is_file(), msg=name)
 
-    def test_omitted_root_installs_from_the_repository_containing_the_script(self):
-        home = Path(tempfile.mkdtemp(prefix="install-skills-home-"))
+    def test_installs_from_the_repository_containing_the_script_regardless_of_cwd(self):
+        home = Path(tempfile.mkdtemp(prefix="install-skills-home-")).resolve()
         elsewhere = Path(tempfile.mkdtemp(prefix="install-skills-cwd-"))
         self.addCleanup(shutil.rmtree, home, True)
         self.addCleanup(shutil.rmtree, elsewhere, True)

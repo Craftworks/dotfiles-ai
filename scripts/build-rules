@@ -13,17 +13,12 @@ def main(argv: list[str] | None = None) -> int:
         description="Generate .cursor/rules and .claude/rules from rules.ja.",
     )
     parser.add_argument(
-        "--root",
-        required=True,
-        help="directory that contains rules.ja",
-    )
-    parser.add_argument(
         "--check",
         action="store_true",
         help="compare deliverables and write nothing; name any that are missing or differ",
     )
     args = parser.parse_args(argv)
-    root = Path(args.root)
+    root = Path(__file__).resolve().parent.parent
     output_dirs = (".cursor/rules", ".claude/rules")
     missing_dirs: list[str] = []
     if args.check:

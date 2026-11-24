@@ -81,7 +81,7 @@ def git_error(root: Path) -> str | None:
         return "rules.en: git was not found. install git, then rerun"
     except subprocess.CalledProcessError:
         return (f"rules.en: {root} is not a git repository. "
-                "run translate-rules on the repository root")
+                "run translate-rules in a git clone of this repository")
     return None
 
 
@@ -90,8 +90,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate the English edition rules.en from rules.ja.",
     )
-    parser.add_argument("--root", required=True,
-                        help="repository root that contains rules.ja")
     parser.add_argument("--translator", default="claude",
                         help="translator command (default: claude)")
     parser.add_argument("--timeout", type=float, default=120,
@@ -99,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("names", nargs="*", metavar="name",
                         help="rules to consider (default: every rule)")
     args = parser.parse_args(argv)
-    root = Path(args.root)
+    root = Path(__file__).resolve().parent.parent
     translator = shutil.which(args.translator) or args.translator
     rules_dir = root / "rules.ja"
 
