@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Install skills.ja into the home skill directories as symbolic links."""
+"""Install skills.<lang> into the home skill directories as symbolic links."""
 
 import argparse
 import sys
 from pathlib import Path
 
-from skill_source import load_skill_md
+from options import OptionError, language, once
+from skill_source import load_skill_md, missing_skills
 
 DESTINATIONS = (".claude/skills", ".cursor/skills")
 CHECK_NEXT = (
@@ -14,15 +15,19 @@ CHECK_NEXT = (
 )
 
 
+def is_edition(name: str) -> bool:
+    """skills.<lang>: a skill edition directory of this repository."""
+    return name.startswith("skills.") and len(name) > len("skills.")
+
+
 def managed_symlink(root: Path, skill: str, link: Path) -> bool:
-    """A symlink this script may repair: it already names a skills.ja skill."""
+    """A symlink this script may repair: it already names a skill of some
+    skills.<lang> edition (of this repository, or of where it used to be)."""
     actual = link.readlink()
-    if actual == root / "skills.ja" / skill:
-        return True
     if skill_target_name(root, actual) is not None:
         return True
     parts = actual.parts
-    return len(parts) >= 2 and parts[-2] == "skills.ja" and parts[-1] == skill
+    return len(parts) >= 2 and is_edition(parts[-2]) and parts[-1] == skill
 
 
 def conflicts(root: Path, home: Path, skills: list[Path], destinations: tuple[str, ...]) -> list[str]:
@@ -60,14 +65,15 @@ def validate(skills: list[Path], destinations: tuple[str, ...]) -> list[str]:
 
 
 def skill_target_name(root: Path, target: Path) -> str | None:
-    """Return the skill name if target points into this root's skills.ja."""
+    """Return the skill name if target points into one of this root's
+    skills.<lang> editions."""
     try:
-        relative = target.relative_to(root / "skills.ja")
+        relative = target.relative_to(root)
     except ValueError:
         return None
-    if not relative.parts:
+    if len(relative.parts) < 2 or not is_edition(relative.parts[0]):
         return None
-    return relative.parts[0]
+    return relative.parts[1]
 
 
 def owned_skill_name(root: Path, target: Path) -> str | None:
@@ -76,14 +82,14 @@ def owned_skill_name(root: Path, target: Path) -> str | None:
     if pointed is not None:
         return pointed
     parts = target.parts
-    if len(parts) >= 2 and parts[-2] == "skills.ja":
+    if len(parts) >= 2 and is_edition(parts[-2]):
         return parts[-1]
     return None
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Link skills.ja into the home skill directories.",
+        description="Link skills.<lang> into the home skill directories.",
     )
     parser.add_argument(
         "--home",
@@ -96,26 +102,34 @@ def main(argv: list[str] | None = None) -> int:
         help="install only this tool: cursor or claude (default: both)",
     )
     parser.add_argument(
+        "--lang",
+        action="append",
+        help="edition to install: skills.<lang> (default: en)",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="compare links and write nothing; name any that are missing or differ",
     )
     args = parser.parse_args(argv)
-    if args.tool and len(args.tool) > 1:
-        print("tool: --tool was given more than once. pass it once", file=sys.stderr)
+    try:
+        tool = once(args.tool, "tool")
+        lang = language(args.lang, "lang", "en")
+    except OptionError as error:
+        print(error, file=sys.stderr)
         return 1
-    if args.tool and args.tool[0] not in {"cursor", "claude"}:
+    if tool is not None and tool not in {"cursor", "claude"}:
         print(
-            f'tool: unknown tool "{args.tool[0]}". pass --tool cursor or --tool claude',
+            f'tool: unknown tool "{tool}". pass --tool cursor or --tool claude',
             file=sys.stderr,
         )
         return 1
-    destinations = DESTINATIONS if not args.tool else (f".{args.tool[0]}/skills",)
+    destinations = DESTINATIONS if tool is None else (f".{tool}/skills",)
     root = Path(__file__).resolve().parent.parent
     home = Path(args.home)
-    skills_dir = root / "skills.ja"
+    skills_dir = root / f"skills.{lang}"
     if not skills_dir.is_dir():
-        print("skills.ja: missing skills.ja. create skills.ja", file=sys.stderr)
+        print(missing_skills(lang), file=sys.stderr)
         return 1
     skills = sorted(p for p in skills_dir.iterdir() if p.is_dir())
     errors = validate(skills, destinations)
@@ -134,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
             for skill in skills:
                 rel = f"{dest}/{skill.name}"
                 link = directory / skill.name
-                target = root / "skills.ja" / skill.name
+                target = skills_dir / skill.name
                 if link.is_symlink() and link.readlink() == target:
                     paths.append(rel)
                 elif not link.exists() and not link.is_symlink():
@@ -159,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
                 problems.append(f"stale: {dest}/{entry.name}")
         if problems:
             print(
-                "links do not match skills.ja. --check changes nothing.",
+                f"links do not match skills.{lang}. --check changes nothing.",
                 file=sys.stderr,
             )
             for line in problems:
@@ -167,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
             print(CHECK_NEXT, file=sys.stderr)
             return 1
         print(
-            f"checked {len(paths)} links from skills.ja under {home}; "
+            f"checked {len(paths)} links from skills.{lang} under {home}; "
             "all match; wrote nothing"
         )
         for path in paths:
@@ -193,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
             entry.unlink()
             removed.append(f"{dest}/{entry.name}")
     for skill in skills:
-        target = root / "skills.ja" / skill.name
+        target = skills_dir / skill.name
         for dest in destinations:
             link = home / dest / skill.name
             link.parent.mkdir(parents=True, exist_ok=True)
@@ -202,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
             if not link.is_symlink():
                 link.symlink_to(target)
             paths.append(f"{dest}/{skill.name}")
-    print(f"installed {len(skills)} skills from skills.ja under {home}")
+    print(f"installed {len(skills)} skills from skills.{lang} under {home}")
     for path in paths:
         print(path)
     for rel in removed:

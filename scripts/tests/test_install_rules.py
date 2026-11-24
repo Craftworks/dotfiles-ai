@@ -27,8 +27,12 @@ CHECK_NEXT = (
 
 
 def run_install(root: Path, home: Path, *extra: str) -> subprocess.CompletedProcess:
+    """Run install-rules. The fixtures are Japanese editions, so --lang ja is
+    passed unless the test passes its own --lang."""
+    lang = [] if "--lang" in extra else ["--lang", "ja"]
     return subprocess.run(
-        [sys.executable, str(install_scripts(root) / NAME), "--home", str(home), *extra],
+        [sys.executable, str(install_scripts(root) / NAME), "--home", str(home),
+         *lang, *extra],
         capture_output=True, text=True,
     )
 
@@ -141,7 +145,7 @@ class FreshInstallTest(unittest.TestCase):
         install_scripts(root)
 
         result = subprocess.run(
-            [sys.executable, "scripts/install-rules", "--home", str(home)],
+            [sys.executable, "scripts/install-rules", "--home", str(home), "--lang", "ja"],
             cwd=root, capture_output=True, text=True,
         )
 
@@ -485,6 +489,65 @@ class NormalRunTest(unittest.TestCase):
             "remove the conflicting entry by hand\n",
         )
         self.assertEqual(home_entries(home), before)
+
+
+class LangTest(unittest.TestCase):
+    """--lang picks the rule set rules.<lang>; the default is en."""
+
+    def setUp(self):
+        self.root, self.home = make_dirs()
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.addCleanup(shutil.rmtree, self.home, True)
+        write_rule(self.root, "alpha", b"cursor-alpha\n", b"claude-alpha\n")
+        write_rule(self.root, "beta", b"cursor-beta\n", b"claude-beta\n")
+        # alpha is the only rule in the English edition.
+        (self.root / "rules.en" / "alpha").mkdir(parents=True)
+
+    def test_default_installs_the_english_rule_set(self):
+        result = run_install(self.root, self.home, "--lang", "en")
+        bare = subprocess.run(
+            [sys.executable, str(self.root / "scripts" / NAME), "--home", str(self.home), "--check"],
+            capture_output=True, text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            result.stdout.splitlines()[0],
+            f"installed 2 files from rules.en under {self.home}",
+        )
+        self.assertFalse((self.home / ".claude" / "rules" / "beta.md").exists())
+        self.assertEqual(bare.returncode, 0, msg=bare.stderr)
+        self.assertEqual(bare.stdout, check_report(self.home, ["alpha"]).replace("rules.ja", "rules.en"))
+
+    def test_a_link_to_a_rule_missing_from_the_selected_edition_is_stale(self):
+        self.assertEqual(run_install(self.root, self.home).returncode, 0)
+
+        check = run_install(self.root, self.home, "--lang", "en", "--check")
+        self.assertEqual(check.returncode, 1)
+        self.assertEqual(
+            check.stderr,
+            check_failure(
+                "stale: .claude/rules/beta.md", "stale: .cursor/rules/beta.mdc"
+            ).replace("rules.ja", "rules.en"),
+        )
+
+        fixed = run_install(self.root, self.home, "--lang", "en")
+        self.assertEqual(fixed.returncode, 0, msg=fixed.stderr)
+        self.assertIn("removed: .claude/rules/beta.md", fixed.stdout)
+        self.assertTrue((self.root / ".claude" / "rules" / "beta.md").is_file())
+
+    def test_a_missing_edition_changes_nothing(self):
+        result = run_install(self.root, self.home, "--lang", "fr")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "rules.fr: missing rules.fr. create rules.fr\n")
+        self.assertEqual(home_entries(self.home), {})
+
+    def test_a_repeated_lang_changes_nothing(self):
+        result = run_install(self.root, self.home, "--lang", "en", "--lang", "ja")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr, "lang: --lang was given more than once. pass it once\n")
+        self.assertEqual(home_entries(self.home), {})
 
 
 class ToolSelectionTest(unittest.TestCase):

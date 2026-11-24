@@ -157,6 +157,106 @@ def translated_report(root: Path, names: list[str], progress: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+class LanguagePairTest(unittest.TestCase):
+    """--from and --to pick the editions rules.<from> and rules.<to>."""
+
+    def english_repo(self) -> "Repo":
+        repo = Repo(self)
+        rule = repo.root / "rules.en" / "sample"
+        rule.mkdir(parents=True)
+        (rule / "meta.json").write_text(
+            json.dumps({"description": "A sample description",
+                        "cursor": {"globs": None, "alwaysApply": False}}, indent=2) + "\n",
+            encoding="utf-8")
+        (rule / "body.md").write_text(EN_BODY, encoding="utf-8")
+        repo.commit()
+        repo.dictionary({
+            "A sample description": "Une description",
+            "## Do": "## À faire",
+            "- The first item": "- Le premier élément",
+            "- The second item": "- Le second élément",
+        })
+        return repo
+
+    def test_an_explicit_pair_translates_that_pair(self):
+        repo = self.english_repo()
+
+        result = repo.run("--from", "en", "--to", "fr")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            result.stdout,
+            "translating sample\n"
+            f"wrote 2 files from rules.en under {repo.root}\n"
+            "rules.fr/sample/body.md\n"
+            "rules.fr/sample/meta.json\n",
+        )
+        self.assertEqual(
+            repo.read("rules.fr/sample/body.md"),
+            "# Sample\n\n## À faire\n\n- Le premier élément\n- Le second élément\n",
+        )
+        self.assertFalse((repo.root / "rules.ja").exists())
+        prompt = repo.calls()[0]["argv"][-1]
+        self.assertIn("Translate the English in the JSON object", prompt)
+        self.assertIn("into French.", prompt)
+
+    def test_a_pair_with_a_missing_source_edition_changes_nothing(self):
+        repo = Repo(self)
+
+        result = repo.run("--from", "de", "--to", "en")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "rules.de: missing rules.de. create rules.de\n")
+        self.assertEqual(repo.calls(), [])
+
+    def test_a_repeated_from_changes_nothing(self):
+        repo = self.english_repo()
+
+        result = repo.run("--from", "en", "--from", "ja", "--to", "fr")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr, "from: --from was given more than once. pass it once\n")
+        self.assertEqual(repo.calls(), [])
+        self.assertFalse((repo.root / "rules.fr").exists())
+
+    def test_a_repeated_to_changes_nothing(self):
+        repo = self.english_repo()
+
+        result = repo.run("--from", "en", "--to", "fr", "--to", "de")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr, "to: --to was given more than once. pass it once\n")
+        self.assertEqual(repo.calls(), [])
+
+    def test_a_value_that_is_not_a_language_code_changes_nothing(self):
+        repo = self.english_repo()
+
+        result = repo.run("--from", "en", "--to", "../x")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr,
+            'to: "../x" is not a language code. '
+            "pass --to with letters, digits, - or _, such as en or ja\n",
+        )
+        self.assertEqual(repo.calls(), [])
+
+    def test_the_same_language_on_both_sides_changes_nothing(self):
+        repo = self.english_repo()
+
+        result = repo.run("--from", "en", "--to", "en")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr,
+            "to: --from and --to are both en. pass two different languages\n",
+        )
+        self.assertEqual(repo.calls(), [])
+
+
 class NewRuleTest(unittest.TestCase):
     def test_a_rule_without_rules_en_is_translated_in_full(self):
         repo = Repo(self)

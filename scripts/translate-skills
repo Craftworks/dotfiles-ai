@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the English edition skills.en from skills.ja.
+"""Generate the edition skills.<to> from skills.<from> (default: ja to en).
 
 One translator call is one Markdown file, the same call translate-rules
 makes. Several files run at once (--jobs, default 4). Every line of the
@@ -15,9 +15,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from skill_source import SkillMd, load_skill_md, parse_skill_md
+from options import OptionError, language
+from skill_source import SkillMd, load_skill_md, missing_skills, parse_skill_md
 from translator import (
     NEXT_ACTION,
+    Pair,
     TranslatorCancelled,
     TranslatorFailed,
     call_translator,
@@ -45,16 +47,16 @@ def git(root: Path, *args: str) -> str:
     return completed.stdout.decode("utf-8").replace("\r\n", "\n")
 
 
-def git_error(root: Path) -> str | None:
+def git_error(root: Path, dst: str) -> str | None:
     try:
         subprocess.run(
             ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
             capture_output=True, check=True,
         )
     except FileNotFoundError:
-        return "skills.en: git was not found. install git, then rerun"
+        return f"skills.{dst}: git was not found. install git, then rerun"
     except subprocess.CalledProcessError:
-        return (f"skills.en: {root} is not a git repository. "
+        return (f"skills.{dst}: {root} is not a git repository. "
                 "run translate-skills in a git clone of this repository")
     return None
 
@@ -90,7 +92,7 @@ class MarkdownTarget:
         self.base = base
         self.skill = skill
 
-    def translate(self, translator: str, timeout: float) -> str:
+    def translate(self, translator: str, timeout: float, pair: Pair) -> str:
         """The English file text, or TranslatorFailed.
 
         The call's JSON shape is a description plus a body. For SKILL.md,
@@ -105,11 +107,11 @@ class MarkdownTarget:
         reference = []
         if self.base is not None:
             reference = kept_pairs(self.base[0], self.base[1], self.lines)
-        output = call_translator(translator, request, reference, timeout)
+        output = call_translator(translator, request, reference, timeout, pair)
         if self.skill:
-            new_lines = check_output(request, output)
+            new_lines = check_output(request, output, pair)
         else:
-            new_lines = check_body(self.lines, output)
+            new_lines = check_body(self.lines, output, pair)
         if self.base is not None:
             new_lines = splice(self.base[0], self.base[1], self.lines, new_lines)
         if self.skill:
@@ -117,42 +119,47 @@ class MarkdownTarget:
         return "\n".join(new_lines) + "\n"
 
 
-def base_lines(root: Path, skill: str, rel: str) -> tuple[list[str], list[str]] | str:
-    """Japanese and English lines at the commit that last changed the English
+def base_lines(root: Path, skill: str, rel: str, src: str,
+               dst: str) -> tuple[list[str], list[str]] | str:
+    """Source and target lines at the commit that last changed the target
     file, or the error line."""
-    commit = git(root, "log", "-1", "--format=%H", "--", f"skills.en/{skill}/{rel}").strip()
+    commit = git(root, "log", "-1", "--format=%H", "--", f"skills.{dst}/{skill}/{rel}").strip()
     if not commit:
-        return (f"{skill}/{rel}: skills.en/{skill}/{rel} is not committed. "
-                f"commit or discard skills.en/{skill}/{rel}, then rerun")
-    ja_text = show(root, commit, f"skills.ja/{skill}/{rel}")
-    en_text = show(root, commit, f"skills.en/{skill}/{rel}")
+        return (f"{skill}/{rel}: skills.{dst}/{skill}/{rel} is not committed. "
+                f"commit or discard skills.{dst}/{skill}/{rel}, then rerun")
+    ja_text = show(root, commit, f"skills.{src}/{skill}/{rel}")
+    en_text = show(root, commit, f"skills.{dst}/{skill}/{rel}")
     if ja_text is None or en_text is None:
-        return (f"{skill}/{rel}: skills.en/{skill}/{rel} has no matching pair "
-                f"in commit {commit[:12]}. delete skills.en/{skill}/{rel} "
+        return (f"{skill}/{rel}: skills.{dst}/{skill}/{rel} has no matching pair "
+                f"in commit {commit[:12]}. delete skills.{dst}/{skill}/{rel} "
                 "to translate it in full, then rerun")
     if rel == "SKILL.md":
         ja = parse_skill_md(ja_text, skill)
         en = parse_skill_md(en_text, skill)
         if isinstance(ja, str) or isinstance(en, str):
             return (f"{skill}/SKILL.md: SKILL.md in commit {commit[:12]} is not "
-                    f"a valid skill. delete skills.en/{skill}/SKILL.md "
+                    f"a valid skill. delete skills.{dst}/{skill}/SKILL.md "
                     "to translate it in full, then rerun")
         ja_lines, en_lines = skill_lines(ja), skill_lines(en)
     else:
         ja_lines, en_lines = ja_text.splitlines(), en_text.splitlines()
     if len(ja_lines) != len(en_lines):
-        return (f"{skill}/{rel}: the Japanese has {len(ja_lines)} lines and "
-                f"the English has {len(en_lines)} at commit {commit[:12]}. "
-                f"delete skills.en/{skill}/{rel} to translate it in full, then rerun")
+        return (f"{skill}/{rel}: skills.{src} has {len(ja_lines)} lines and "
+                f"skills.{dst} has {len(en_lines)} at commit {commit[:12]}. "
+                f"delete skills.{dst}/{skill}/{rel} to translate it in full, then rerun")
     return ja_lines, en_lines
 
 
 def main(argv: list[str] | None = None) -> int:
     reset_translation()
     parser = argparse.ArgumentParser(
-        description="Generate the English edition skills.en from skills.ja.",
+        description="Generate the edition skills.<to> from skills.<from>.",
     )
     parser.add_argument("--translator", default="claude", help="translator command (default: claude)")
+    parser.add_argument("--from", dest="source", action="append",
+                        help="language to translate from: skills.<from> (default: ja)")
+    parser.add_argument("--to", dest="target", action="append",
+                        help="language to translate into: skills.<to> (default: en)")
     parser.add_argument("--timeout", type=float, default=120,
                         help="seconds one translator call may take (default: 120)")
     parser.add_argument("--jobs", type=int, default=4,
@@ -160,23 +167,35 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("names", nargs="*", metavar="name",
                         help="skills to consider (default: every skill)")
     args = parser.parse_args(argv)
+    try:
+        src = language(args.source, "from", "ja")
+        dst = language(args.target, "to", "en")
+    except OptionError as error:
+        print(error, file=sys.stderr)
+        return 1
+    if src == dst:
+        print(f"to: --from and --to are both {src}. pass two different languages",
+              file=sys.stderr)
+        return 1
+    pair = Pair(src, dst)
     if args.jobs < 1:
         print("jobs: --jobs must be at least 1. pass --jobs 4", file=sys.stderr)
         return 1
     root = Path(__file__).resolve().parent.parent
     translator = shutil.which(args.translator) or args.translator
-    skills_dir = root / "skills.ja"
+    skills_dir = root / f"skills.{src}"
     if not skills_dir.is_dir():
-        print("skills.ja: missing skills.ja. create skills.ja", file=sys.stderr)
+        print(missing_skills(src), file=sys.stderr)
         return 1
     available = sorted(p.name for p in skills_dir.iterdir() if p.is_dir())
     errors = [
-        f"{name}: no such skill in skills.ja. pass the name of a directory under skills.ja"
+        f"{name}: no such skill in skills.{src}. "
+        f"pass the name of a directory under skills.{src}"
         for name in args.names if name not in available
     ]
     selected = [name for name in available if not args.names or name in args.names]
-    if any((root / "skills.en" / name).is_dir() for name in selected):
-        problem = git_error(root)
+    if any((root / f"skills.{dst}" / name).is_dir() for name in selected):
+        problem = git_error(root, dst)
         if problem:
             print(problem, file=sys.stderr)
             return 1
@@ -185,12 +204,12 @@ def main(argv: list[str] | None = None) -> int:
     copies: list[tuple[str, bytes]] = []
     unchanged: list[str] = []
     for name in selected:
-        if (root / "skills.en" / name).is_dir() and git(
-            root, "status", "--porcelain", "--", f"skills.en/{name}"
+        if (root / f"skills.{dst}" / name).is_dir() and git(
+            root, "status", "--porcelain", "--", f"skills.{dst}/{name}"
         ).strip():
             errors.append(
-                f"{name}: skills.en/{name} has uncommitted changes. "
-                f"commit or discard skills.en/{name}, then rerun"
+                f"{name}: skills.{dst}/{name} has uncommitted changes. "
+                f"commit or discard skills.{dst}/{name}, then rerun"
             )
             continue
         loaded = load_skill_md(skills_dir / name)
@@ -201,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             rel = path.relative_to(skills_dir / name).as_posix()
             if path.name == "basis.md":
                 continue
-            en_path = root / "skills.en" / name / rel
+            en_path = root / f"skills.{dst}" / name / rel
             if path.suffix != ".md":
                 data = path.read_bytes()
                 if en_path.is_file() and en_path.read_bytes() == data:
@@ -218,11 +237,11 @@ def main(argv: list[str] | None = None) -> int:
             if not en_path.exists():
                 targets.append(MarkdownTarget(f"{name}/{rel}", lines, None, current_skill))
                 continue
-            pair = base_lines(root, name, rel)
-            if isinstance(pair, str):
-                errors.append(pair)
+            base = base_lines(root, name, rel, src, dst)
+            if isinstance(base, str):
+                errors.append(base)
                 continue
-            prev_ja, prev_en = pair
+            prev_ja, prev_en = base
             if prev_ja == lines:
                 unchanged.append(f"{name}/{rel}")
                 continue
@@ -251,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
         def work(target: MarkdownTarget) -> str | None:
             say(f"translating {target.rel}")
             try:
-                return target.translate(translator, args.timeout)
+                return target.translate(translator, args.timeout, pair)
             except TranslatorCancelled:
                 return None
             except TranslatorFailed as failure:
@@ -274,18 +293,18 @@ def main(argv: list[str] | None = None) -> int:
             planned.append((target.rel, text))
 
     if not planned and not copies:
-        print(f"nothing to translate from skills.ja under {root}; wrote nothing")
+        print(f"nothing to translate from skills.{src} under {root}; wrote nothing")
         return 0
     for rel, text in planned:
-        write_atomically(root / "skills.en" / rel, text)
+        write_atomically(root / f"skills.{dst}" / rel, text)
     for rel, data in copies:
-        path = root / "skills.en" / rel
+        path = root / f"skills.{dst}" / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    written = [f"skills.en/{rel}" for rel, _text in planned]
-    written += [f"skills.en/{rel}" for rel, _data in copies]
+    written = [f"skills.{dst}/{rel}" for rel, _text in planned]
+    written += [f"skills.{dst}/{rel}" for rel, _data in copies]
     written.sort()
-    print(f"wrote {len(written)} files from skills.ja under {root}")
+    print(f"wrote {len(written)} files from skills.{src} under {root}")
     for path in written:
         print(path)
     return 0

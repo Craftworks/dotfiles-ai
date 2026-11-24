@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the English edition rules.en from rules.ja."""
+"""Generate the edition rules.<to> from rules.<from> (default: ja to en)."""
 
 import argparse
 import json
@@ -8,9 +8,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from rule_source import MISSING_RULES_JA, load_rule
+from options import OptionError, language
+from rule_source import load_rule, missing_rules
 from translator import (
     NEXT_ACTION,
+    Pair,
     TranslatorFailed,
     call_translator,
     check_output,
@@ -35,15 +37,15 @@ def rule_lines(description: str, body_text: str) -> list[str]:
     return [description] + body.rstrip("\n").split("\n")
 
 
-def base_pair(root: Path, name: str) -> tuple[str, list[str], list[str]] | str:
-    """The commit that last changed rules.en/<name>/body.md, with the Japanese
-    and English lines of the rule at that commit, or the error line.
+def base_pair(root: Path, name: str, src: str, dst: str) -> tuple[str, list[str], list[str]] | str:
+    """The commit that last changed rules.<to>/<name>/body.md, with the source
+    and target lines of the rule at that commit, or the error line.
 
     Both sides come from the same commit, not the working tree, so line i of
     the English is the translation of line i of the Japanese.
     """
     commit = git(root, "log", "-1", "--format=%H", "--",
-                 f"rules.en/{name}/body.md").strip()
+                 f"rules.{dst}/{name}/body.md").strip()
 
     def show(rel: str) -> str | None:
         try:
@@ -51,36 +53,38 @@ def base_pair(root: Path, name: str) -> tuple[str, list[str], list[str]] | str:
         except subprocess.CalledProcessError:
             return None
 
-    ja_meta, ja_body = show(f"rules.ja/{name}/meta.json"), show(f"rules.ja/{name}/body.md")
+    ja_meta, ja_body = (show(f"rules.{src}/{name}/meta.json"),
+                        show(f"rules.{src}/{name}/body.md"))
     if ja_meta is None or ja_body is None:
-        return (f"{name}: rules.ja/{name} is not in commit {commit[:12]}. "
-                f"delete rules.en/{name} to translate it in full, then rerun")
-    en_meta, en_body = show(f"rules.en/{name}/meta.json"), show(f"rules.en/{name}/body.md")
+        return (f"{name}: rules.{src}/{name} is not in commit {commit[:12]}. "
+                f"delete rules.{dst}/{name} to translate it in full, then rerun")
+    en_meta, en_body = (show(f"rules.{dst}/{name}/meta.json"),
+                        show(f"rules.{dst}/{name}/body.md"))
     if en_meta is None or en_body is None:
-        return (f"{name}: rules.en/{name} is incomplete in commit {commit[:12]}. "
-                f"delete rules.en/{name} to translate it in full, then rerun")
+        return (f"{name}: rules.{dst}/{name} is incomplete in commit {commit[:12]}. "
+                f"delete rules.{dst}/{name} to translate it in full, then rerun")
     try:
         ja = rule_lines(json.loads(ja_meta)["description"], ja_body)
         en = rule_lines(json.loads(en_meta)["description"], en_body)
     except (json.JSONDecodeError, KeyError, TypeError):
         return (f"{name}: meta.json in commit {commit[:12]} is not a valid rule. "
-                f"delete rules.en/{name} to translate it in full, then rerun")
+                f"delete rules.{dst}/{name} to translate it in full, then rerun")
     if len(ja) != len(en):
-        return (f"{name}: rules.ja/{name}/body.md has {len(ja) - 1} lines and "
-                f"rules.en/{name}/body.md has {len(en) - 1} at commit {commit[:12]}. "
-                f"delete rules.en/{name} to translate it in full, then rerun")
+        return (f"{name}: rules.{src}/{name}/body.md has {len(ja) - 1} lines and "
+                f"rules.{dst}/{name}/body.md has {len(en) - 1} at commit {commit[:12]}. "
+                f"delete rules.{dst}/{name} to translate it in full, then rerun")
     return commit, ja, en
 
 
-def git_error(root: Path) -> str | None:
+def git_error(root: Path, dst: str) -> str | None:
     """The error line when git cannot read history under root, else None."""
     try:
         subprocess.run(["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
                        capture_output=True, check=True)
     except FileNotFoundError:
-        return "rules.en: git was not found. install git, then rerun"
+        return f"rules.{dst}: git was not found. install git, then rerun"
     except subprocess.CalledProcessError:
-        return (f"rules.en: {root} is not a git repository. "
+        return (f"rules.{dst}: {root} is not a git repository. "
                 "run translate-rules in a git clone of this repository")
     return None
 
@@ -88,40 +92,56 @@ def git_error(root: Path) -> str | None:
 def main(argv: list[str] | None = None) -> int:
     reset_translation()
     parser = argparse.ArgumentParser(
-        description="Generate the English edition rules.en from rules.ja.",
+        description="Generate the edition rules.<to> from rules.<from>.",
     )
     parser.add_argument("--translator", default="claude",
                         help="translator command (default: claude)")
+    parser.add_argument("--from", dest="source", action="append",
+                        help="language to translate from: rules.<from> (default: ja)")
+    parser.add_argument("--to", dest="target", action="append",
+                        help="language to translate into: rules.<to> (default: en)")
     parser.add_argument("--timeout", type=float, default=120,
                         help="seconds one translator call may take (default: 120)")
     parser.add_argument("names", nargs="*", metavar="name",
                         help="rules to consider (default: every rule)")
     args = parser.parse_args(argv)
+    try:
+        src = language(args.source, "from", "ja")
+        dst = language(args.target, "to", "en")
+    except OptionError as error:
+        print(error, file=sys.stderr)
+        return 1
+    if src == dst:
+        print(f"to: --from and --to are both {src}. pass two different languages",
+              file=sys.stderr)
+        return 1
+    pair = Pair(src, dst)
     root = Path(__file__).resolve().parent.parent
     translator = shutil.which(args.translator) or args.translator
-    rules_dir = root / "rules.ja"
+    rules_dir = root / f"rules.{src}"
 
     # Phase 1: decide every rule before any translator call, so an error in
     # one rule costs no calls and writes nothing.
     if not rules_dir.is_dir():
-        print(MISSING_RULES_JA, file=sys.stderr)
+        print(missing_rules(src), file=sys.stderr)
         return 1
     available = sorted(p.name for p in rules_dir.iterdir() if p.is_dir())
     errors = [
-        f"{name}: no such rule in rules.ja. pass the name of a directory under rules.ja"
+        f"{name}: no such rule in rules.{src}. "
+        f"pass the name of a directory under rules.{src}"
         for name in args.names if name not in available
     ]
     selected = [name for name in available if not args.names or name in args.names]
 
     # History is read only for rules that already have English.
-    if any((root / "rules.en" / name).is_dir() for name in selected):
-        problem = git_error(root)
+    if any((root / f"rules.{dst}" / name).is_dir() for name in selected):
+        problem = git_error(root, dst)
         if problem:
             print(problem, file=sys.stderr)
             return 1
 
     # (name, cursor, current Japanese lines, base pair or None, unchanged,
-    #  whether rules.en/<name>/meta.json holds a different cursor)
+    #  whether rules.<to>/<name>/meta.json holds a different cursor)
     decided: list[tuple[str, dict, list[str], tuple[list[str], list[str]] | None,
                         bool, bool]] = []
     for name in selected:
@@ -131,22 +151,22 @@ def main(argv: list[str] | None = None) -> int:
             continue
         ja_lines = rule_lines(rule.description, rule.body.decode("utf-8"))
         cursor = rule.cursor
-        if not (root / "rules.en" / name).is_dir():
+        if not (root / f"rules.{dst}" / name).is_dir():
             decided.append((name, cursor, ja_lines, None, False, False))
             continue
-        if git(root, "status", "--porcelain", "--", f"rules.en/{name}").strip():
+        if git(root, "status", "--porcelain", "--", f"rules.{dst}/{name}").strip():
             errors.append(
-                f"{name}: rules.en/{name} has uncommitted changes. "
-                f"commit or discard rules.en/{name}, then rerun"
+                f"{name}: rules.{dst}/{name} has uncommitted changes. "
+                f"commit or discard rules.{dst}/{name}, then rerun"
             )
             continue
-        pair = base_pair(root, name)
-        if isinstance(pair, str):
-            errors.append(pair)
+        base = base_pair(root, name, src, dst)
+        if isinstance(base, str):
+            errors.append(base)
             continue
-        _commit, prev_ja, prev_en = pair
-        # rules.en/<name> is clean here, so the working tree is the base.
-        en_meta_text = (root / "rules.en" / name / "meta.json").read_text(encoding="utf-8")
+        _commit, prev_ja, prev_en = base
+        # rules.<to>/<name> is clean here, so the working tree is the base.
+        en_meta_text = (root / f"rules.{dst}" / name / "meta.json").read_text(encoding="utf-8")
         cursor_stale = json.loads(en_meta_text).get("cursor") != cursor
         decided.append((name, cursor, ja_lines, (prev_ja, prev_en),
                         prev_ja == ja_lines, cursor_stale))
@@ -158,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     # Phase 2: translate the targets in memory; write only when all succeed.
     planned: list[tuple[Path, str]] = []
     for name, cursor, ja_lines, base, unchanged, cursor_stale in decided:
-        out_dir = root / "rules.en" / name
+        out_dir = root / f"rules.{dst}" / name
         if unchanged and cursor_stale:
             # The cursor namespace is copied, never translated: no call.
             print(f"copying cursor of {name}", flush=True)
@@ -174,8 +194,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"translating {name}", flush=True)
         try:
             reference = kept_pairs(base[0], base[1], ja_lines) if base else []
-            output = call_translator(translator, ja_lines, reference, args.timeout)
-            en_lines = check_output(ja_lines, output)
+            output = call_translator(translator, ja_lines, reference, args.timeout, pair)
+            en_lines = check_output(ja_lines, output, pair)
         except TranslatorFailed as failure:
             # Nothing has been written yet: planned output stays in memory.
             print(f"{name}: {failure}. {NEXT_ACTION}", file=sys.stderr)
@@ -190,11 +210,11 @@ def main(argv: list[str] | None = None) -> int:
         ))
 
     if not planned:
-        print(f"nothing to translate from rules.ja under {root}; wrote nothing")
+        print(f"nothing to translate from rules.{src} under {root}; wrote nothing")
         return 0
     for path, data in planned:
         write_atomically(path, data)
-    print(f"wrote {len(planned)} files from rules.ja under {root}")
+    print(f"wrote {len(planned)} files from rules.{src} under {root}")
     for path, _data in planned:
         print(path.relative_to(root).as_posix())
     return 0

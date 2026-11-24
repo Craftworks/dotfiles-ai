@@ -12,6 +12,7 @@ import signal
 import subprocess
 import tempfile
 import threading
+from dataclasses import dataclass
 
 # Sonnet over Haiku, measured on 2026-11-23 with the JSON shape below: both
 # kept the line contract in 18 of 18 runs; Sonnet kept the source's emphasis
@@ -24,16 +25,54 @@ MODEL = "claude-sonnet-5-5"
 # A skills.en run the same day left the Japanese comment on prototype/UI.md
 # line 61, so the prompt says a comment inside a code fence is translated.
 PROMPT = (
-    "Translate the Japanese in the JSON object on standard input into English. "
+    "Translate the {source} in the JSON object on standard input into {target}. "
     'Output only a JSON object with the same keys: "description" (a string) '
     'and "body" (an array of strings). The body array must have exactly as '
     "many elements as the input, element i translating element i. Keep empty "
     "strings empty, keep each element's Markdown marker (heading level, list "
-    "marker, table row, code fence), keep text already in English and "
-    "identifiers unchanged, and add no trailing period where the Japanese has "
-    "none. Japanese inside a code fence, including a comment, is translated. "
+    "marker, table row, code fence), keep text already in {target} and "
+    "identifiers unchanged, and add no trailing period where the {source} has "
+    "none. {source} inside a code fence, including a comment, is translated. "
     "Leave code tokens and string literals unchanged. No code fence around the JSON."
 )
+
+# Names the prompt uses for a language code; a code with no name here is
+# passed to the model as it was given.
+LANGUAGE_NAMES = {
+    "ja": "Japanese", "en": "English", "fr": "French", "de": "German",
+    "es": "Spanish", "zh": "Chinese", "ko": "Korean",
+}
+
+
+@dataclass(frozen=True)
+class Pair:
+    """The language a run translates from and the language it translates to."""
+
+    source: str
+    target: str
+
+    @property
+    def source_name(self) -> str:
+        return LANGUAGE_NAMES.get(self.source, self.source)
+
+    @property
+    def target_name(self) -> str:
+        return LANGUAGE_NAMES.get(self.target, self.target)
+
+    @property
+    def prompt(self) -> str:
+        return PROMPT.format(source=self.source_name, target=self.target_name)
+
+    @property
+    def keeps_no_source_text(self) -> bool:
+        """Whether source characters left in the output prove a line was not
+        translated. Only for a Japanese source: its kana and ideographs do not
+        belong in a target that does not use them. For any other source the
+        script cannot tell from the characters, so the check is off."""
+        return self.source == "ja" and self.target.split("-")[0] not in {"ja", "zh", "ko"}
+
+
+DEFAULT_PAIR = Pair("ja", "en")
 
 NEXT_ACTION = "make claude -p succeed, then rerun"
 
@@ -96,14 +135,16 @@ def marker(line: str) -> str:
     return f"{len(indent)}:{mark.strip()}"
 
 
-def _reject_line(where: str, ja_line: str, en_line: str) -> None:
+def _reject_line(pair: Pair, where: str, ja_line: str, en_line: str) -> None:
     if marker(ja_line) != marker(en_line):
         raise TranslatorFailed(
             f"translator output {where} does not keep "
-            "the Markdown marker of the Japanese"
+            f"the Markdown marker of the {pair.source_name}"
         )
-    if JAPANESE.search(en_line):
-        raise TranslatorFailed(f"translator output {where} still contains Japanese")
+    if pair.keeps_no_source_text and JAPANESE.search(en_line):
+        raise TranslatorFailed(
+            f"translator output {where} still contains {pair.source_name}"
+        )
 
 
 def parse_answer(output: str) -> tuple[str, list[str]]:
@@ -125,7 +166,7 @@ def parse_answer(output: str) -> tuple[str, list[str]]:
     return answer["description"], answer["body"]
 
 
-def check_output(ja: list[str], output: str) -> list[str]:
+def check_output(ja: list[str], output: str, pair: Pair = DEFAULT_PAIR) -> list[str]:
     """The answer as lines ([description] + body), if it keeps the line contract.
 
     ja[0] is the description and ja[1:] are the body lines. Raises
@@ -136,31 +177,33 @@ def check_output(ja: list[str], output: str) -> list[str]:
     if len(body) != len(ja) - 1:
         raise TranslatorFailed(
             f"translator output body has {len(body)} lines "
-            f"for {len(ja) - 1} Japanese lines"
+            f"for {len(ja) - 1} {pair.source_name} lines"
         )
     en = [description] + body
     for index, (ja_line, en_line) in enumerate(zip(ja, en)):
         where = "description" if index == 0 else f"body line {index}"
-        _reject_line(where, ja_line, en_line)
+        _reject_line(pair, where, ja_line, en_line)
     return en
 
 
-def check_body(ja_body: list[str], output: str) -> list[str]:
+def check_body(ja_body: list[str], output: str, pair: Pair = DEFAULT_PAIR) -> list[str]:
     """The body of an answer whose description is not a line of the file.
 
     The description must still be a string without Japanese. The body must
     have one line per Japanese body line and keep each line's marker.
     """
     description, body = parse_answer(output)
-    if JAPANESE.search(description):
-        raise TranslatorFailed("translator output description still contains Japanese")
+    if pair.keeps_no_source_text and JAPANESE.search(description):
+        raise TranslatorFailed(
+            f"translator output description still contains {pair.source_name}"
+        )
     if len(body) != len(ja_body):
         raise TranslatorFailed(
             f"translator output body has {len(body)} lines "
-            f"for {len(ja_body)} Japanese lines"
+            f"for {len(ja_body)} {pair.source_name} lines"
         )
     for index, (ja_line, en_line) in enumerate(zip(ja_body, body), start=1):
-        _reject_line(f"body line {index}", ja_line, en_line)
+        _reject_line(pair, f"body line {index}", ja_line, en_line)
     return body
 
 
@@ -230,7 +273,7 @@ def kill_tree(process: subprocess.Popen) -> None:
 
 
 def call_translator(translator: str, ja: list[str], reference: list[list[str]],
-                    timeout: float) -> str:
+                    timeout: float, pair: Pair = DEFAULT_PAIR) -> str:
     """Run one translator call and return its standard output (LF line endings).
 
     ja[0] is the description and ja[1:] are the body lines, which is the JSON
@@ -240,10 +283,10 @@ def call_translator(translator: str, ja: list[str], reference: list[list[str]],
     """
     if _cancel.is_set():
         raise TranslatorCancelled("cancelled")
-    prompt = PROMPT
+    prompt = pair.prompt
     if reference:
         prompt += (
-            "\n\nFor consistent terms, these [Japanese, English] pairs are "
+            f"\n\nFor consistent terms, these [{pair.source_name}, {pair.target_name}] pairs are "
             "lines translated before:\n\n" + json.dumps(reference, ensure_ascii=False)
         )
     request = json.dumps({"description": ja[0], "body": ja[1:]}, ensure_ascii=False)

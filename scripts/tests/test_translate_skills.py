@@ -266,5 +266,74 @@ class InvalidInputTest(unittest.TestCase):
         self.assertEqual(repo.calls(), [])
 
 
+class LanguagePairTest(unittest.TestCase):
+    """--from and --to pick the editions skills.<from> and skills.<to>."""
+
+    def english_repo(self) -> "Repo":
+        repo = Repo(self)
+        repo.write("skills.en/sample/SKILL.md", SKILL_EN)
+        repo.commit()
+        repo.dictionary({
+            "A sample description": "Une description",
+            "- The first item": "- Le premier élément",
+        })
+        return repo
+
+    def test_an_explicit_pair_builds_the_target_edition(self):
+        repo = self.english_repo()
+
+        result = repo.run("--from", "en", "--to", "fr")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            result.stdout,
+            "translating 1 file, 1 at a time\n"
+            "translating sample/SKILL.md\n"
+            f"wrote 1 files from skills.en under {repo.root}\n"
+            "skills.fr/sample/SKILL.md\n",
+        )
+        self.assertEqual(
+            repo.read("skills.fr/sample/SKILL.md"),
+            "---\nname: sample\ndescription: Une description\n"
+            "disable-model-invocation: true\n---\n# Sample\n- Le premier élément\n",
+        )
+        prompt = repo.calls()[0]["argv"][-1]
+        self.assertIn("Translate the English in the JSON object", prompt)
+        self.assertIn("into French.", prompt)
+        self.assertFalse((repo.root / "skills.ja").exists())
+
+    def test_a_missing_source_edition_makes_no_call(self):
+        repo = Repo(self)
+        result = repo.run("--from", "de", "--to", "en")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "skills.de: missing skills.de. create skills.de\n")
+        self.assertEqual(repo.calls(), [])
+
+    def test_a_repeated_from_or_to_changes_nothing(self):
+        repo = self.english_repo()
+
+        again_from = repo.run("--from", "en", "--from", "ja", "--to", "fr")
+        again_to = repo.run("--from", "en", "--to", "fr", "--to", "de")
+
+        self.assertEqual(again_from.returncode, 1)
+        self.assertEqual(
+            again_from.stderr, "from: --from was given more than once. pass it once\n")
+        self.assertEqual(again_to.returncode, 1)
+        self.assertEqual(
+            again_to.stderr, "to: --to was given more than once. pass it once\n")
+        self.assertEqual(repo.calls(), [])
+        self.assertFalse((repo.root / "skills.fr").exists())
+
+    def test_the_same_language_on_both_sides_changes_nothing(self):
+        repo = self.english_repo()
+        result = repo.run("--from", "en", "--to", "en")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr,
+            "to: --from and --to are both en. pass two different languages\n",
+        )
+        self.assertEqual(repo.calls(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

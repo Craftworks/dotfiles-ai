@@ -1,4 +1,4 @@
-"""Read and validate one canonical skill under skills.ja.
+"""Read and validate one skill under skills.<lang>.
 
 Shared by install-skills and translate-skills so a skill is valid for both
 or for neither, with the same error lines.
@@ -6,6 +6,11 @@ or for neither, with the same error lines.
 
 from dataclasses import dataclass
 from pathlib import Path
+
+
+def missing_skills(lang: str) -> str:
+    """The error line for a skills.<lang> directory that does not exist."""
+    return f"skills.{lang}: missing skills.{lang}. create skills.{lang}"
 
 
 @dataclass(frozen=True)

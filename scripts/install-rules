@@ -9,7 +9,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from rule_source import MISSING_RULES_JA
+from options import OptionError, language, once
+from rule_source import missing_rules
 
 # Claude first, then Cursor, matching install-skills.
 DESTINATIONS = (
@@ -113,28 +114,36 @@ def main(argv: list[str] | None = None) -> int:
         help="install only this tool: cursor or claude (default: both)",
     )
     parser.add_argument(
+        "--lang",
+        action="append",
+        help="rule set to install: rules.<lang> (default: en)",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="compare links and write nothing; name any that are missing or differ",
     )
     args = parser.parse_args(argv)
-    if args.tool and len(args.tool) > 1:
-        print("tool: --tool was given more than once. pass it once", file=sys.stderr)
+    try:
+        tool = once(args.tool, "tool")
+        lang = language(args.lang, "lang", "en")
+    except OptionError as error:
+        print(error, file=sys.stderr)
         return 1
-    if args.tool and args.tool[0] not in {"cursor", "claude"}:
+    if tool is not None and tool not in {"cursor", "claude"}:
         print(
-            f'tool: unknown tool "{args.tool[0]}". pass --tool cursor or --tool claude',
+            f'tool: unknown tool "{tool}". pass --tool cursor or --tool claude',
             file=sys.stderr,
         )
         return 1
-    destinations = DESTINATIONS if not args.tool else tuple(
-        item for item in DESTINATIONS if item[0].startswith(f".{args.tool[0]}/")
+    destinations = DESTINATIONS if tool is None else tuple(
+        item for item in DESTINATIONS if item[0].startswith(f".{tool}/")
     )
     root = Path(__file__).resolve().parent.parent
     home = Path(args.home)
-    rules_dir = root / "rules.ja"
+    rules_dir = root / f"rules.{lang}"
     if not rules_dir.is_dir():
-        print(MISSING_RULES_JA, file=sys.stderr)
+        print(missing_rules(lang), file=sys.stderr)
         return 1
     names = sorted(p.name for p in rules_dir.iterdir() if p.is_dir())
     missing = [
@@ -181,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
                 problems.append(f"stale: {dest}/{entry.name}")
         if problems:
             print(
-                "links do not match rules.ja. --check changes nothing.",
+                f"links do not match rules.{lang}. --check changes nothing.",
                 file=sys.stderr,
             )
             for line in problems:
@@ -189,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             print(CHECK_NEXT, file=sys.stderr)
             return 1
         print(
-            f"checked {len(paths)} links from rules.ja under {home}; "
+            f"checked {len(paths)} links from rules.{lang} under {home}; "
             "all match; wrote nothing"
         )
         for path in paths:
@@ -224,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
             if not link.is_symlink():
                 link.symlink_to(target)
             paths.append(f"{dest}/{name}{ext}")
-    print(f"installed {len(paths)} files from rules.ja under {home}")
+    print(f"installed {len(paths)} files from rules.{lang} under {home}")
     for path in paths:
         print(path)
     for rel in removed:

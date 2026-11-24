@@ -35,8 +35,11 @@ FIXTURES = TESTS_DIR / "fixtures"
 
 
 def run_build(root: Path, *extra: str) -> subprocess.CompletedProcess:
+    """Run build-rules. The fixtures are Japanese editions, so --lang ja is
+    passed unless the test passes its own --lang."""
+    lang = [] if "--lang" in extra else ["--lang", "ja"]
     return subprocess.run(
-        [sys.executable, str(install_scripts(root) / "build-rules"), *extra],
+        [sys.executable, str(install_scripts(root) / "build-rules"), *lang, *extra],
         capture_output=True, text=True,
         env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
     )
@@ -344,6 +347,73 @@ class InvalidInputTest(unittest.TestCase):
         self.assertNotIn("Traceback", result.stderr)
         self.assertFalse((root / ".cursor").exists())
         self.assertFalse((root / ".claude").exists())
+
+
+def make_edition(lang: str) -> Path:
+    """A repository whose only edition is rules.<lang>: the always fixture."""
+    tmp = Path(tempfile.mkdtemp(prefix="build-rules-test-")).resolve()
+    shutil.copytree(FIXTURES / "always" / "rules.ja", tmp / f"rules.{lang}")
+    install_scripts(tmp)
+    return tmp
+
+
+class LangTest(unittest.TestCase):
+    """--lang picks the edition rules.<lang>; the default is en."""
+
+    def test_default_builds_from_the_english_edition(self):
+        root = make_edition("en")
+        result = subprocess.run(
+            [sys.executable, str(root / "scripts" / "build-rules")],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue(result.stdout.startswith(f"wrote 2 files from rules.en under {root}\n"))
+        self.assertTrue((root / ".cursor" / "rules" / "sample-always.mdc").is_file())
+
+    def test_default_does_not_read_the_japanese_edition(self):
+        root = make_edition("ja")
+        result = subprocess.run(
+            [sys.executable, str(root / "scripts" / "build-rules")],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stderr, "rules.en: missing rules.en. create rules.en\n")
+        self.assertFalse((root / ".cursor").exists())
+
+    def test_an_explicit_language_selects_that_edition(self):
+        root = make_edition("fr")
+        result = run_build(root, "--lang", "fr")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue(result.stdout.startswith(f"wrote 2 files from rules.fr under {root}\n"))
+
+    def test_check_reports_the_selected_edition(self):
+        root = make_edition("fr")
+        self.assertEqual(run_build(root, "--lang", "fr").returncode, 0)
+        (root / ".claude" / "rules" / "sample-always.md").write_text("edited\n")
+        result = run_build(root, "--lang", "fr", "--check")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("deliverables do not match rules.fr. --check writes nothing.", result.stderr)
+
+    def test_a_repeated_lang_changes_nothing(self):
+        root = make_edition("en")
+        result = run_build(root, "--lang", "en", "--lang", "ja")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr, "lang: --lang was given more than once. pass it once\n")
+        self.assertFalse((root / ".cursor").exists())
+        self.assertFalse((root / ".claude").exists())
+
+    def test_a_value_that_is_not_a_language_code_changes_nothing(self):
+        root = make_edition("en")
+        result = run_build(root, "--lang", "../x")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr,
+            'lang: "../x" is not a language code. '
+            "pass --lang with letters, digits, - or _, such as en or ja\n",
+        )
+        self.assertFalse((root / ".cursor").exists())
 
 
 class RealRulesSnapshotTest(unittest.TestCase):

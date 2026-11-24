@@ -1,4 +1,4 @@
-"""Read and validate one canonical rule under rules.ja.
+"""Read and validate one rule under rules.<lang>.
 
 Shared by build-rules and translate-rules so a rule is valid for both or for
 neither, with the same error lines. Both scripts import it from their own
@@ -9,12 +9,17 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-MISSING_RULES_JA = "rules.ja: missing rules.ja. create rules.ja"
+
+
+def missing_rules(lang: str) -> str:
+    """The error line for a rules.<lang> directory that does not exist."""
+    return f"rules.{lang}: missing rules.{lang}. create rules.{lang}"
+
 
 
 @dataclass(frozen=True)
 class Rule:
-    """A valid rule: rules.ja/<name>/meta.json and body.md.
+    """A valid rule: rules.<lang>/<name>/meta.json and body.md.
 
     cursor holds only the keys meta.json gives it (globs: str | None,
     alwaysApply: bool). body is the bytes of body.md as written.

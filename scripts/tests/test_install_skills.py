@@ -18,11 +18,19 @@ REPO_ROOT = TESTS_DIR.parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "install-skills"
 NAME = "install-skills"
 DESTINATIONS = (".claude/skills", ".cursor/skills")
+CHECK_NEXT = (
+    "run without --check to install the links; "
+    "conflicting entries must be removed by hand."
+)
 
 
 def run_build(root: Path, home: Path, *extra: str) -> subprocess.CompletedProcess:
+    """Run install-skills. The fixtures are Japanese editions, so --lang ja is
+    passed unless the test passes its own --lang."""
+    lang = [] if "--lang" in extra else ["--lang", "ja"]
     return subprocess.run(
-        [sys.executable, str(install_scripts(root) / NAME), "--home", str(home), *extra],
+        [sys.executable, str(install_scripts(root) / NAME), "--home", str(home),
+         *lang, *extra],
         capture_output=True, text=True,
     )
 
@@ -33,8 +41,8 @@ def make_dirs() -> tuple[Path, Path]:
     return root, home
 
 
-def write_skill(root: Path, name: str, description: str = "A skill.") -> None:
-    skill = root / "skills.ja" / name
+def write_skill(root: Path, name: str, description: str = "A skill.", lang: str = "ja") -> None:
+    skill = root / f"skills.{lang}" / name
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text(
         f"---\nname: {name}\ndescription: {description}\n---\n\nbody\n",
@@ -95,7 +103,7 @@ class FreshInstallTest(unittest.TestCase):
         install_scripts(root)
 
         result = subprocess.run(
-            [sys.executable, "scripts/install-skills", "--home", str(home)],
+            [sys.executable, "scripts/install-skills", "--home", str(home), "--lang", "ja"],
             cwd=root,
             capture_output=True,
             text=True,
@@ -626,25 +634,30 @@ class UnownedEntriesTest(unittest.TestCase):
 
 class RealSkillsTest(unittest.TestCase):
     def test_real_skills_link_into_a_temporary_home(self):
-        home = Path(tempfile.mkdtemp(prefix="install-skills-home-")).resolve()
-        self.addCleanup(shutil.rmtree, home, True)
-        names = sorted(
-            p.name for p in (REPO_ROOT / "skills.ja").iterdir() if p.is_dir()
-        )
+        for lang in ("ja", "en"):
+            with self.subTest(lang=lang):
+                home = Path(tempfile.mkdtemp(prefix="install-skills-home-")).resolve()
+                self.addCleanup(shutil.rmtree, home, True)
+                names = sorted(
+                    p.name for p in (REPO_ROOT / f"skills.{lang}").iterdir() if p.is_dir()
+                )
 
-        result = run_build(REPO_ROOT, home)
+                result = run_build(REPO_ROOT, home, "--lang", lang)
 
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertEqual(result.stdout, install_report(home, names))
-        self.assertEqual(result.stderr, "")
-        self.assertGreater(len(names), 0)
-        for name in names:
-            target = REPO_ROOT / "skills.ja" / name
-            for dest in DESTINATIONS:
-                link = home / dest / name
-                self.assertTrue(link.is_symlink(), msg=f"{dest}/{name}")
-                self.assertEqual(link.readlink(), target)
-                self.assertTrue((link / "SKILL.md").is_file(), msg=name)
+                self.assertEqual(result.returncode, 0, msg=result.stderr)
+                self.assertEqual(
+                    result.stdout,
+                    install_report(home, names).replace("skills.ja", f"skills.{lang}"),
+                )
+                self.assertEqual(result.stderr, "")
+                self.assertGreater(len(names), 0)
+                for name in names:
+                    target = REPO_ROOT / f"skills.{lang}" / name
+                    for dest in DESTINATIONS:
+                        link = home / dest / name
+                        self.assertTrue(link.is_symlink(), msg=f"{dest}/{name}")
+                        self.assertEqual(link.readlink(), target)
+                        self.assertTrue((link / "SKILL.md").is_file(), msg=name)
 
     def test_installs_from_the_repository_containing_the_script_regardless_of_cwd(self):
         home = Path(tempfile.mkdtemp(prefix="install-skills-home-")).resolve()
@@ -656,7 +669,7 @@ class RealSkillsTest(unittest.TestCase):
         )
 
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--home", str(home)],
+            [sys.executable, str(SCRIPT), "--home", str(home), "--lang", "ja"],
             cwd=elsewhere,
             capture_output=True, text=True,
         )
@@ -795,6 +808,74 @@ class NormalRunTest(unittest.TestCase):
             "remove the conflicting entry by hand\n",
         )
         self.assertEqual(home_entries(home), before)
+
+
+class LangTest(unittest.TestCase):
+    """--lang picks the edition skills.<lang>; the default is en."""
+
+    def setUp(self):
+        self.root, self.home = make_dirs()
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.addCleanup(shutil.rmtree, self.home, True)
+        write_skill(self.root, "alpha")
+        write_skill(self.root, "beta")
+        write_skill(self.root, "alpha", lang="en")
+
+    def test_default_links_the_english_edition(self):
+        result = subprocess.run(
+            [sys.executable, str(install_scripts(self.root) / NAME), "--home", str(self.home)],
+            capture_output=True, text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            result.stdout,
+            install_report(self.home, ["alpha"]).replace("skills.ja", "skills.en"),
+        )
+        for dest in DESTINATIONS:
+            self.assertEqual(
+                (self.home / dest / "alpha").readlink(), self.root / "skills.en" / "alpha")
+            self.assertFalse((self.home / dest / "beta").exists())
+
+    def test_a_link_to_the_other_edition_is_repaired_and_checked_as_differs(self):
+        self.assertEqual(run_build(self.root, self.home).returncode, 0)
+
+        check = run_build(self.root, self.home, "--lang", "en", "--check")
+        self.assertEqual(check.returncode, 1)
+        self.assertEqual(
+            check.stderr,
+            "links do not match skills.en. --check changes nothing.\n"
+            "differs: .claude/skills/alpha\n"
+            "differs: .cursor/skills/alpha\n"
+            "stale: .claude/skills/beta\n"
+            "stale: .cursor/skills/beta\n"
+            f"{CHECK_NEXT}\n",
+        )
+
+        fixed = run_build(self.root, self.home, "--lang", "en")
+        self.assertEqual(fixed.returncode, 0, msg=fixed.stderr)
+        self.assertIn("removed: .claude/skills/beta", fixed.stdout)
+        for dest in DESTINATIONS:
+            self.assertEqual(
+                (self.home / dest / "alpha").readlink(), self.root / "skills.en" / "alpha")
+            self.assertFalse((self.home / dest / "beta").is_symlink())
+        self.assertTrue((self.root / "skills.ja" / "beta").is_dir())
+
+        again = run_build(self.root, self.home, "--lang", "en", "--check")
+        self.assertEqual(again.returncode, 0, msg=again.stderr)
+
+    def test_a_missing_edition_changes_nothing(self):
+        result = run_build(self.root, self.home, "--lang", "fr")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "skills.fr: missing skills.fr. create skills.fr\n")
+        self.assertFalse((self.home / ".claude").exists())
+
+    def test_a_repeated_lang_changes_nothing(self):
+        result = run_build(self.root, self.home, "--lang", "en", "--lang", "ja")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr, "lang: --lang was given more than once. pass it once\n")
+        self.assertFalse((self.home / ".claude").exists())
 
 
 class ToolSelectionTest(unittest.TestCase):

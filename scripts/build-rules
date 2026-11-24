@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""Generate Cursor and Claude rules from rules.ja."""
+"""Generate Cursor and Claude rules from the rules.<lang> edition."""
 
 import argparse
 import sys
 from pathlib import Path
 
-from rule_source import MISSING_RULES_JA, load_rule
+from options import OptionError, language
+from rule_source import load_rule, missing_rules
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Generate .cursor/rules and .claude/rules from rules.ja.",
+        description="Generate .cursor/rules and .claude/rules from rules.<lang>.",
+    )
+    parser.add_argument(
+        "--lang",
+        action="append",
+        help="edition to build from: rules.<lang> (default: en)",
     )
     parser.add_argument(
         "--check",
@@ -18,14 +24,19 @@ def main(argv: list[str] | None = None) -> int:
         help="compare deliverables and write nothing; name any that are missing or differ",
     )
     args = parser.parse_args(argv)
+    try:
+        lang = language(args.lang, "lang", "en")
+    except OptionError as error:
+        print(error, file=sys.stderr)
+        return 1
     root = Path(__file__).resolve().parent.parent
     output_dirs = (".cursor/rules", ".claude/rules")
     missing_dirs: list[str] = []
     if args.check:
         missing_dirs = [rel for rel in output_dirs if not (root / rel).is_dir()]
-    rules_dir = root / "rules.ja"
+    rules_dir = root / f"rules.{lang}"
     if not rules_dir.is_dir():
-        print(MISSING_RULES_JA, file=sys.stderr)
+        print(missing_rules(lang), file=sys.stderr)
         return 1
     errors: list[str] = []
     planned: list[tuple[Path, bytes]] = []
@@ -90,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         elif empty_dirs and not missing_dirs and not problems:
             summary = "output directory is empty. --check writes nothing."
         else:
-            summary = "deliverables do not match rules.ja. --check writes nothing."
+            summary = f"deliverables do not match rules.{lang}. --check writes nothing."
         print(summary, file=sys.stderr)
         for rel in missing_dirs:
             print(f"missing: {rel}", file=sys.stderr)
@@ -103,10 +114,10 @@ def main(argv: list[str] | None = None) -> int:
     count = len(planned)
     if args.check:
         print(
-            f"checked {count} files from rules.ja under {root}; all match; wrote nothing"
+            f"checked {count} files from rules.{lang} under {root}; all match; wrote nothing"
         )
     else:
-        print(f"wrote {count} files from rules.ja under {root}")
+        print(f"wrote {count} files from rules.{lang} under {root}")
     for path, _data in planned:
         print(path.relative_to(root).as_posix())
     return 0
