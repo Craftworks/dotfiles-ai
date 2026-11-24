@@ -55,7 +55,7 @@ def git_error(root: Path) -> str | None:
         return "skills.en: git was not found. install git, then rerun"
     except subprocess.CalledProcessError:
         return (f"skills.en: {root} is not a git repository. "
-                "run translate-skills on the repository root")
+                "run translate-skills in a git clone of this repository")
     return None
 
 

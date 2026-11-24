@@ -81,7 +81,7 @@ def git_error(root: Path) -> str | None:
         return "rules.en: git was not found. install git, then rerun"
     except subprocess.CalledProcessError:
         return (f"rules.en: {root} is not a git repository. "
-                "run translate-rules on the repository root")
+                "run translate-rules in a git clone of this repository")
     return None
 
 

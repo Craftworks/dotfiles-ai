@@ -372,7 +372,7 @@ class BasePairErrorTest(unittest.TestCase):
         self.assert_nothing_happened(
             repo, result, before,
             f"rules.en: {repo.root} is not a git repository. "
-            "run translate-rules on the repository root\n",
+            "run translate-rules in a git clone of this repository\n",
         )
 
     def test_a_base_commit_without_the_japanese_rule_is_an_error(self):
