@@ -564,6 +564,25 @@ class InvalidInputTest(unittest.TestCase):
         self.assertEqual(home_entries(home), before)
 
 
+class SimpleFrontmatterTest(unittest.TestCase):
+    def install(self, frontmatter: str):
+        root, home = make_dirs()
+        self.addCleanup(shutil.rmtree, root, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        skill = root / "skills.ja" / "alpha"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(f"---\n{frontmatter}---\n\nbody\n", encoding="utf-8")
+        result = run_build(root, home)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(result.stdout, install_report(home, ["alpha"]))
+
+    def test_a_blank_frontmatter_line_is_skipped(self):
+        self.install("name: alpha\n\ndescription: A skill.\n")
+
+    def test_a_value_may_contain_a_colon(self):
+        self.install("name: alpha\ndescription: Use when: a, b.\n")
+
+
 class ExtraFrontmatterTest(unittest.TestCase):
     def test_other_frontmatter_keys_are_installed(self):
         root, home = make_dirs()
@@ -876,6 +895,18 @@ class LangTest(unittest.TestCase):
         self.assertEqual(
             result.stderr, "lang: --lang was given more than once. pass it once\n")
         self.assertFalse((self.home / ".claude").exists())
+
+    def test_a_value_that_is_not_a_language_code_changes_nothing(self):
+        result = run_build(self.root, self.home, "--lang", "../x")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr,
+            'lang: "../x" is not a language code. '
+            "pass --lang with letters, digits, - or _, such as en or ja\n",
+        )
+        self.assertFalse((self.home / ".claude").exists())
+        self.assertFalse((self.home / ".cursor").exists())
 
 
 class ToolSelectionTest(unittest.TestCase):

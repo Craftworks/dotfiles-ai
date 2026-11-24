@@ -549,6 +549,17 @@ class LangTest(unittest.TestCase):
             result.stderr, "lang: --lang was given more than once. pass it once\n")
         self.assertEqual(home_entries(self.home), {})
 
+    def test_a_value_that_is_not_a_language_code_changes_nothing(self):
+        result = run_install(self.root, self.home, "--lang", "../x")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(
+            result.stderr,
+            'lang: "../x" is not a language code. '
+            "pass --lang with letters, digits, - or _, such as en or ja\n",
+        )
+        self.assertEqual(home_entries(self.home), {})
+
 
 class ToolSelectionTest(unittest.TestCase):
     def test_cursor_installs_only_the_cursor_destination(self):

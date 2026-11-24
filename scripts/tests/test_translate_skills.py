@@ -265,6 +265,57 @@ class InvalidInputTest(unittest.TestCase):
         self.assertEqual(result.stderr, "sample: missing SKILL.md. create SKILL.md\n")
         self.assertEqual(repo.calls(), [])
 
+    def test_one_invalid_skill_among_valid_ones_makes_no_call(self):
+        repo = Repo(self)
+        repo.write("skills.ja/sample/SKILL.md", SKILL)
+        repo.write("skills.ja/broken/SKILL.md", SKILL.replace("name: sample", "name: other"))
+        repo.commit()
+
+        result = repo.run()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr,
+            'broken: name "other" does not match the directory. set name to broken\n',
+        )
+        self.assertEqual(repo.calls(), [])
+        self.assertFalse((repo.root / "skills.en").exists())
+
+    def test_uncommitted_changes_in_the_target_skill_are_an_error(self):
+        repo = Repo(self)
+        repo.write("skills.ja/sample/SKILL.md", SKILL)
+        repo.write("skills.en/sample/SKILL.md", SKILL_EN)
+        repo.commit()
+        repo.write("skills.ja/sample/SKILL.md", SKILL.replace("一つ目", "新しい"))
+        repo.write("skills.en/sample/SKILL.md", SKILL_EN + "- Edited by hand\n")
+
+        result = repo.run()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr,
+            "sample: skills.en/sample has uncommitted changes. "
+            "commit or discard skills.en/sample, then rerun\n",
+        )
+        self.assertEqual(repo.calls(), [])
+        self.assertEqual(repo.read("skills.en/sample/SKILL.md"), SKILL_EN + "- Edited by hand\n")
+
+
+class NonMarkdownCopyTest(unittest.TestCase):
+    def test_a_non_markdown_file_is_copied_byte_for_byte_without_a_call(self):
+        repo = Repo(self)
+        repo.write("skills.ja/sample/SKILL.md", SKILL)
+        payload = b"\x00\xff\r\n\x89PNG\xe3\x81\x82"
+        (repo.root / "skills.ja/sample/assets").mkdir(parents=True)
+        (repo.root / "skills.ja/sample/assets/blob.bin").write_bytes(payload)
+        repo.commit()
+
+        result = repo.run()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual((repo.root / "skills.en/sample/assets/blob.bin").read_bytes(), payload)
+        self.assertEqual(len(repo.calls()), 1)
+
 
 class LanguagePairTest(unittest.TestCase):
     """--from and --to pick the editions skills.<from> and skills.<to>."""
@@ -323,6 +374,17 @@ class LanguagePairTest(unittest.TestCase):
             again_to.stderr, "to: --to was given more than once. pass it once\n")
         self.assertEqual(repo.calls(), [])
         self.assertFalse((repo.root / "skills.fr").exists())
+
+    def test_a_value_that_is_not_a_language_code_changes_nothing(self):
+        repo = self.english_repo()
+        result = repo.run("--from", "en", "--to", "../x")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            result.stderr,
+            'to: "../x" is not a language code. '
+            "pass --to with letters, digits, - or _, such as en or ja\n",
+        )
+        self.assertEqual(repo.calls(), [])
 
     def test_the_same_language_on_both_sides_changes_nothing(self):
         repo = self.english_repo()

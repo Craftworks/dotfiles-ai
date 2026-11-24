@@ -45,6 +45,10 @@ FAKE_TRANSLATOR = textwrap.dedent(
            "body": [dictionary.get(line, line) for line in request["body"]]}
     if mode == "extra-line":
         out["body"].append("extra")
+    if mode == "empty-description":
+        out["description"] = ""
+    if mode == "no-body":
+        del out["body"]
     sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
     '''
 )
@@ -694,6 +698,23 @@ class TranslatorFailureTest(unittest.TestCase):
     def test_a_translator_that_exits_non_zero(self):
         self.assert_failed(self.repo.run(mode="fail"),
                            "translator exited with status 1 (usage limit reached)")
+        self.assertEqual(len(self.repo.calls()), 1, msg="a failed call was retried")
+
+    def test_output_that_is_a_json_object_of_the_wrong_shape(self):
+        self.assert_failed(
+            self.repo.run(mode="no-body"),
+            "translator output is not a JSON object with a description string "
+            "and a body array of strings",
+        )
+
+    def test_output_with_an_empty_description(self):
+        # The spec fixes that this fails, not the cause wording, so only the
+        # rule name and the next action are pinned.
+        result = self.repo.run(mode="empty-description")
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue(result.stderr.startswith("sample: "), msg=result.stderr)
+        self.assertTrue(result.stderr.endswith(f"{NEXT_ACTION}\n"), msg=result.stderr)
+        self.assertEqual(self.repo.snapshot(), {})
 
     def test_a_translator_that_exceeds_the_timeout(self):
         result = self.repo.run("--timeout", "1", mode="sleep")
