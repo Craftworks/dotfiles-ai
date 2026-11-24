@@ -15,9 +15,6 @@ from pathlib import Path
 
 from support import install_scripts
 
-TESTS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = TESTS_DIR.parents[1]
-SCRIPT = REPO_ROOT / "scripts" / "install-rules"
 NAME = "install-rules"
 DESTINATIONS = (
     (".claude/rules", ".md"),

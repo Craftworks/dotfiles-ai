@@ -646,7 +646,7 @@ class RealSkillsTest(unittest.TestCase):
                 self.assertEqual(link.readlink(), target)
                 self.assertTrue((link / "SKILL.md").is_file(), msg=name)
 
-    def test_omitted_root_installs_from_the_repository_containing_the_script(self):
+    def test_installs_from_the_repository_containing_the_script_regardless_of_cwd(self):
         home = Path(tempfile.mkdtemp(prefix="install-skills-home-")).resolve()
         elsewhere = Path(tempfile.mkdtemp(prefix="install-skills-cwd-"))
         self.addCleanup(shutil.rmtree, home, True)
