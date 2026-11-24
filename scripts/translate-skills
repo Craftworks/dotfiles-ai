@@ -47,16 +47,16 @@ def git(root: Path, *args: str) -> str:
     return completed.stdout.decode("utf-8").replace("\r\n", "\n")
 
 
-def git_error(root: Path, dst: str) -> str | None:
+def git_error(root: Path, target: str) -> str | None:
     try:
         subprocess.run(
             ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
             capture_output=True, check=True,
         )
     except FileNotFoundError:
-        return f"skills.{dst}: git was not found. install git, then rerun"
+        return f"skills.{target}: git was not found. install git, then rerun"
     except subprocess.CalledProcessError:
-        return (f"skills.{dst}: {root} is not a git repository. "
+        return (f"skills.{target}: {root} is not a git repository. "
                 "run translate-skills in a git clone of this repository")
     return None
 
@@ -93,7 +93,7 @@ class MarkdownTarget:
         self.skill = skill
 
     def translate(self, translator: str, timeout: float, pair: Pair) -> str:
-        """The English file text, or TranslatorFailed.
+        """The target file text, or TranslatorFailed.
 
         The call's JSON shape is a description plus a body. For SKILL.md,
         lines[0] is the description and is checked with check_output. Any
@@ -119,35 +119,35 @@ class MarkdownTarget:
         return "\n".join(new_lines) + "\n"
 
 
-def base_lines(root: Path, skill: str, rel: str, src: str,
-               dst: str) -> tuple[list[str], list[str]] | str:
+def base_lines(root: Path, skill: str, rel: str, source: str,
+               target: str) -> tuple[list[str], list[str]] | str:
     """Source and target lines at the commit that last changed the target
     file, or the error line."""
-    commit = git(root, "log", "-1", "--format=%H", "--", f"skills.{dst}/{skill}/{rel}").strip()
+    commit = git(root, "log", "-1", "--format=%H", "--", f"skills.{target}/{skill}/{rel}").strip()
     if not commit:
-        return (f"{skill}/{rel}: skills.{dst}/{skill}/{rel} is not committed. "
-                f"commit or discard skills.{dst}/{skill}/{rel}, then rerun")
-    ja_text = show(root, commit, f"skills.{src}/{skill}/{rel}")
-    en_text = show(root, commit, f"skills.{dst}/{skill}/{rel}")
-    if ja_text is None or en_text is None:
-        return (f"{skill}/{rel}: skills.{dst}/{skill}/{rel} has no matching pair "
-                f"in commit {commit[:12]}. delete skills.{dst}/{skill}/{rel} "
+        return (f"{skill}/{rel}: skills.{target}/{skill}/{rel} is not committed. "
+                f"commit or discard skills.{target}/{skill}/{rel}, then rerun")
+    source_text = show(root, commit, f"skills.{source}/{skill}/{rel}")
+    target_text = show(root, commit, f"skills.{target}/{skill}/{rel}")
+    if source_text is None or target_text is None:
+        return (f"{skill}/{rel}: skills.{target}/{skill}/{rel} has no matching pair "
+                f"in commit {commit[:12]}. delete skills.{target}/{skill}/{rel} "
                 "to translate it in full, then rerun")
     if rel == "SKILL.md":
-        ja = parse_skill_md(ja_text, skill)
-        en = parse_skill_md(en_text, skill)
-        if isinstance(ja, str) or isinstance(en, str):
+        source_skill = parse_skill_md(source_text, skill)
+        target_skill = parse_skill_md(target_text, skill)
+        if isinstance(source_skill, str) or isinstance(target_skill, str):
             return (f"{skill}/SKILL.md: SKILL.md in commit {commit[:12]} is not "
-                    f"a valid skill. delete skills.{dst}/{skill}/SKILL.md "
+                    f"a valid skill. delete skills.{target}/{skill}/SKILL.md "
                     "to translate it in full, then rerun")
-        ja_lines, en_lines = skill_lines(ja), skill_lines(en)
+        source_lines, target_lines = skill_lines(source_skill), skill_lines(target_skill)
     else:
-        ja_lines, en_lines = ja_text.splitlines(), en_text.splitlines()
-    if len(ja_lines) != len(en_lines):
-        return (f"{skill}/{rel}: skills.{src} has {len(ja_lines)} lines and "
-                f"skills.{dst} has {len(en_lines)} at commit {commit[:12]}. "
-                f"delete skills.{dst}/{skill}/{rel} to translate it in full, then rerun")
-    return ja_lines, en_lines
+        source_lines, target_lines = source_text.splitlines(), target_text.splitlines()
+    if len(source_lines) != len(target_lines):
+        return (f"{skill}/{rel}: skills.{source} has {len(source_lines)} lines and "
+                f"skills.{target} has {len(target_lines)} at commit {commit[:12]}. "
+                f"delete skills.{target}/{skill}/{rel} to translate it in full, then rerun")
+    return source_lines, target_lines
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -168,34 +168,34 @@ def main(argv: list[str] | None = None) -> int:
                         help="skills to consider (default: every skill)")
     args = parser.parse_args(argv)
     try:
-        src = language(args.source, "from", "ja")
-        dst = language(args.target, "to", "en")
+        source = language(args.source, "from", "ja")
+        target = language(args.target, "to", "en")
     except OptionError as error:
         print(error, file=sys.stderr)
         return 1
-    if src == dst:
-        print(f"to: --from and --to are both {src}. pass two different languages",
+    if source == target:
+        print(f"to: --from and --to are both {source}. pass two different languages",
               file=sys.stderr)
         return 1
-    pair = Pair(src, dst)
+    pair = Pair(source, target)
     if args.jobs < 1:
         print("jobs: --jobs must be at least 1. pass --jobs 4", file=sys.stderr)
         return 1
     root = Path(__file__).resolve().parent.parent
     translator = shutil.which(args.translator) or args.translator
-    skills_dir = root / f"skills.{src}"
+    skills_dir = root / f"skills.{source}"
     if not skills_dir.is_dir():
-        print(missing_skills(src), file=sys.stderr)
+        print(missing_skills(source), file=sys.stderr)
         return 1
     available = sorted(p.name for p in skills_dir.iterdir() if p.is_dir())
     errors = [
-        f"{name}: no such skill in skills.{src}. "
-        f"pass the name of a directory under skills.{src}"
+        f"{name}: no such skill in skills.{source}. "
+        f"pass the name of a directory under skills.{source}"
         for name in args.names if name not in available
     ]
     selected = [name for name in available if not args.names or name in args.names]
-    if any((root / f"skills.{dst}" / name).is_dir() for name in selected):
-        problem = git_error(root, dst)
+    if any((root / f"skills.{target}" / name).is_dir() for name in selected):
+        problem = git_error(root, target)
         if problem:
             print(problem, file=sys.stderr)
             return 1
@@ -204,12 +204,12 @@ def main(argv: list[str] | None = None) -> int:
     copies: list[tuple[str, bytes]] = []
     unchanged: list[str] = []
     for name in selected:
-        if (root / f"skills.{dst}" / name).is_dir() and git(
-            root, "status", "--porcelain", "--", f"skills.{dst}/{name}"
+        if (root / f"skills.{target}" / name).is_dir() and git(
+            root, "status", "--porcelain", "--", f"skills.{target}/{name}"
         ).strip():
             errors.append(
-                f"{name}: skills.{dst}/{name} has uncommitted changes. "
-                f"commit or discard skills.{dst}/{name}, then rerun"
+                f"{name}: skills.{target}/{name} has uncommitted changes. "
+                f"commit or discard skills.{target}/{name}, then rerun"
             )
             continue
         loaded = load_skill_md(skills_dir / name)
@@ -220,10 +220,10 @@ def main(argv: list[str] | None = None) -> int:
             rel = path.relative_to(skills_dir / name).as_posix()
             if path.name == "basis.md":
                 continue
-            en_path = root / f"skills.{dst}" / name / rel
+            target_path = root / f"skills.{target}" / name / rel
             if path.suffix != ".md":
                 data = path.read_bytes()
-                if en_path.is_file() and en_path.read_bytes() == data:
+                if target_path.is_file() and target_path.read_bytes() == data:
                     unchanged.append(f"{name}/{rel}")
                 else:
                     copies.append((f"{name}/{rel}", data))
@@ -234,19 +234,19 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 lines = path.read_text(encoding="utf-8").replace("\r\n", "\n").splitlines()
                 current_skill = None
-            if not en_path.exists():
+            if not target_path.exists():
                 targets.append(MarkdownTarget(f"{name}/{rel}", lines, None, current_skill))
                 continue
-            base = base_lines(root, name, rel, src, dst)
+            base = base_lines(root, name, rel, source, target)
             if isinstance(base, str):
                 errors.append(base)
                 continue
-            prev_ja, prev_en = base
-            if prev_ja == lines:
+            previous_source, previous_target = base
+            if previous_source == lines:
                 unchanged.append(f"{name}/{rel}")
                 continue
             targets.append(MarkdownTarget(
-                f"{name}/{rel}", lines, (prev_ja, prev_en), current_skill
+                f"{name}/{rel}", lines, (previous_source, previous_target), current_skill
             ))
     if errors:
         for message in errors:
@@ -267,17 +267,17 @@ def main(argv: list[str] | None = None) -> int:
         left: list[str] = []
         error_lock = threading.Lock()
 
-        def work(target: MarkdownTarget) -> str | None:
-            say(f"translating {target.rel}")
+        def work(item: MarkdownTarget) -> str | None:
+            say(f"translating {item.rel}")
             try:
-                return target.translate(translator, args.timeout, pair)
+                return item.translate(translator, args.timeout, pair)
             except TranslatorCancelled:
                 return None
             except TranslatorFailed as failure:
                 with error_lock:
                     first = "message" not in error
                     if first:
-                        error["message"] = f"{target.rel}: {failure}. {NEXT_ACTION}"
+                        error["message"] = f"{item.rel}: {failure}. {NEXT_ACTION}"
                 if first:
                     left.extend(cancel_translation())
                 return None
@@ -289,22 +289,22 @@ def main(argv: list[str] | None = None) -> int:
             for line in left:
                 print(line, file=sys.stderr)
             return 1
-        for target, text in zip(targets, results):
-            planned.append((target.rel, text))
+        for item, text in zip(targets, results):
+            planned.append((item.rel, text))
 
     if not planned and not copies:
-        print(f"nothing to translate from skills.{src} under {root}; wrote nothing")
+        print(f"nothing to translate from skills.{source} under {root}; wrote nothing")
         return 0
     for rel, text in planned:
-        write_atomically(root / f"skills.{dst}" / rel, text)
+        write_atomically(root / f"skills.{target}" / rel, text)
     for rel, data in copies:
-        path = root / f"skills.{dst}" / rel
+        path = root / f"skills.{target}" / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    written = [f"skills.{dst}/{rel}" for rel, _text in planned]
-    written += [f"skills.{dst}/{rel}" for rel, _data in copies]
+    written = [f"skills.{target}/{rel}" for rel, _text in planned]
+    written += [f"skills.{target}/{rel}" for rel, _data in copies]
     written.sort()
-    print(f"wrote {len(written)} files from skills.{src} under {root}")
+    print(f"wrote {len(written)} files from skills.{source} under {root}")
     for path in written:
         print(path)
     return 0

@@ -135,13 +135,13 @@ def marker(line: str) -> str:
     return f"{len(indent)}:{mark.strip()}"
 
 
-def _reject_line(pair: Pair, where: str, ja_line: str, en_line: str) -> None:
-    if marker(ja_line) != marker(en_line):
+def _reject_line(pair: Pair, where: str, source_line: str, target_line: str) -> None:
+    if marker(source_line) != marker(target_line):
         raise TranslatorFailed(
             f"translator output {where} does not keep "
             f"the Markdown marker of the {pair.source_name}"
         )
-    if pair.keeps_no_source_text and JAPANESE.search(en_line):
+    if pair.keeps_no_source_text and JAPANESE.search(target_line):
         raise TranslatorFailed(
             f"translator output {where} still contains {pair.source_name}"
         )
@@ -166,79 +166,85 @@ def parse_answer(output: str) -> tuple[str, list[str]]:
     return answer["description"], answer["body"]
 
 
-def check_output(ja: list[str], output: str, pair: Pair = DEFAULT_PAIR) -> list[str]:
+def check_output(source_lines: list[str], output: str,
+                 pair: Pair = DEFAULT_PAIR) -> list[str]:
     """The answer as lines ([description] + body), if it keeps the line contract.
 
-    ja[0] is the description and ja[1:] are the body lines. Raises
-    TranslatorFailed naming the first way the answer breaks the contract.
-    Body line numbers are 1-based.
+    source_lines[0] is the description and source_lines[1:] are the body
+    lines. Raises TranslatorFailed naming the first way the answer breaks the
+    contract. Body line numbers are 1-based.
     """
     description, body = parse_answer(output)
-    if len(body) != len(ja) - 1:
+    if len(body) != len(source_lines) - 1:
         raise TranslatorFailed(
             f"translator output body has {len(body)} lines "
-            f"for {len(ja) - 1} {pair.source_name} lines"
+            f"for {len(source_lines) - 1} {pair.source_name} lines"
         )
-    en = [description] + body
-    for index, (ja_line, en_line) in enumerate(zip(ja, en)):
+    target_lines = [description] + body
+    for index, (source_line, target_line) in enumerate(zip(source_lines, target_lines)):
         where = "description" if index == 0 else f"body line {index}"
-        _reject_line(pair, where, ja_line, en_line)
-    return en
+        _reject_line(pair, where, source_line, target_line)
+    return target_lines
 
 
-def check_body(ja_body: list[str], output: str, pair: Pair = DEFAULT_PAIR) -> list[str]:
+def check_body(source_body: list[str], output: str,
+               pair: Pair = DEFAULT_PAIR) -> list[str]:
     """The body of an answer whose description is not a line of the file.
 
-    The description must still be a string without Japanese. The body must
-    have one line per Japanese body line and keep each line's marker.
+    The description must still be a string; when the pair checks for leftover
+    source text, it must have none. The body must have one line per source
+    body line and keep each line's marker.
     """
     description, body = parse_answer(output)
     if pair.keeps_no_source_text and JAPANESE.search(description):
         raise TranslatorFailed(
             f"translator output description still contains {pair.source_name}"
         )
-    if len(body) != len(ja_body):
+    if len(body) != len(source_body):
         raise TranslatorFailed(
             f"translator output body has {len(body)} lines "
-            f"for {len(ja_body)} {pair.source_name} lines"
+            f"for {len(source_body)} {pair.source_name} lines"
         )
-    for index, (ja_line, en_line) in enumerate(zip(ja_body, body), start=1):
-        _reject_line(pair, f"body line {index}", ja_line, en_line)
+    for index, (source_line, target_line) in enumerate(zip(source_body, body), start=1):
+        _reject_line(pair, f"body line {index}", source_line, target_line)
     return body
 
 
-def splice(prev_ja: list[str], prev_en: list[str], ja: list[str],
-           new_en: list[str]) -> list[str]:
-    """Keep the previous English for every Japanese line that did not change.
+def splice(previous_source: list[str], previous_target: list[str],
+           source_lines: list[str], new_target: list[str]) -> list[str]:
+    """Keep the previous target line for every source line that did not change.
 
-    prev_ja and prev_en are a base pair of equal length (line i of one is the
-    translation of line i of the other); new_en has one line per line of ja.
+    previous_source and previous_target are a base pair of equal length (line
+    i of one is the translation of line i of the other); new_target has one
+    line per line of source_lines.
     """
     import difflib
-    matcher = difflib.SequenceMatcher(None, prev_ja, ja, autojunk=False)
+    matcher = difflib.SequenceMatcher(None, previous_source, source_lines, autojunk=False)
     result: list[str] = []
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == "equal":
-            result.extend(prev_en[i1:i2])
+            result.extend(previous_target[i1:i2])
         else:
-            result.extend(new_en[j1:j2])
+            result.extend(new_target[j1:j2])
     return result
 
 
-def kept_pairs(prev_ja: list[str], prev_en: list[str], ja: list[str]) -> list[list[str]]:
-    """[Japanese, English] for each non-blank line kept unchanged from the
-    base pair: the only previous English the translator is shown.
+def kept_pairs(previous_source: list[str], previous_target: list[str],
+               source_lines: list[str]) -> list[list[str]]:
+    """[source, target] for each non-blank line kept unchanged from the base
+    pair: the only previous translation the translator is shown.
 
-    The English of a changed line is left out on purpose: shown it, Haiku
-    copied the old line instead of translating the new Japanese.
+    The translation of a changed line is left out on purpose: shown it, Haiku
+    copied the old line instead of translating the new source.
     """
     import difflib
-    matcher = difflib.SequenceMatcher(None, prev_ja, ja, autojunk=False)
+    matcher = difflib.SequenceMatcher(None, previous_source, source_lines, autojunk=False)
     pairs = []
     for tag, i1, i2, _j1, _j2 in matcher.get_opcodes():
         if tag == "equal":
             pairs.extend(
-                [prev_ja[i], prev_en[i]] for i in range(i1, i2) if prev_ja[i].strip()
+                [previous_source[i], previous_target[i]]
+                for i in range(i1, i2) if previous_source[i].strip()
             )
     return pairs
 
@@ -272,14 +278,15 @@ def kill_tree(process: subprocess.Popen) -> None:
         ) from None
 
 
-def call_translator(translator: str, ja: list[str], reference: list[list[str]],
+def call_translator(translator: str, source_lines: list[str], reference: list[list[str]],
                     timeout: float, pair: Pair = DEFAULT_PAIR) -> str:
     """Run one translator call and return its standard output (LF line endings).
 
-    ja[0] is the description and ja[1:] are the body lines, which is the JSON
-    sent on standard input. Raises TranslatorFailed when the command is
-    missing, exits non-zero, or does not finish within timeout seconds.
-    Raises TranslatorCancelled when this run was already cancelled.
+    source_lines[0] is the description and source_lines[1:] are the body
+    lines, which is the JSON sent on standard input. Raises TranslatorFailed
+    when the command is missing, exits non-zero, or does not finish within
+    timeout seconds. Raises TranslatorCancelled when this run was already
+    cancelled.
     """
     if _cancel.is_set():
         raise TranslatorCancelled("cancelled")
@@ -289,7 +296,7 @@ def call_translator(translator: str, ja: list[str], reference: list[list[str]],
             f"\n\nFor consistent terms, these [{pair.source_name}, {pair.target_name}] pairs are "
             "lines translated before:\n\n" + json.dumps(reference, ensure_ascii=False)
         )
-    request = json.dumps({"description": ja[0], "body": ja[1:]}, ensure_ascii=False)
+    request = json.dumps({"description": source_lines[0], "body": source_lines[1:]}, ensure_ascii=False)
     command = [
         translator, "-p",
         "--model", MODEL,
