@@ -1,6 +1,6 @@
 # Test specification for build-rules.
 #
-# Mapping to the done conditions in scripts/README:
+# Mapping to the done conditions in scripts/SPEC.md:
 #   Condition 1 (match the real files)       -> RealRulesSnapshotTest
 #   Condition 2 (idempotent)                 -> IdempotencyTest
 #   Condition 3 (--check)                    -> CheckModeTest
