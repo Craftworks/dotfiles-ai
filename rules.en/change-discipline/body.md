@@ -14,6 +14,9 @@
 - Don't generate more than an approver can review
 - The README holds only the entry point (purpose, usage, pointers to other documents). Don't put normative rules in it
 - Put the why, contracts, non-goals, and completion criteria in the SPEC
+- In documents that lay out sections with the same structure for multiple subjects, write shared properties once in a common part, and put only subject-specific differences in each section
+- Put each statement of fact in one place and reference it from elsewhere. Don't repeat it for the reader's sake. However, items used for judgment (checklists and criteria) should be self-contained so they can be judged on the spot
+- For command descriptions (a one-line purpose, options, default values), the command's --help is the source of truth. Don't copy them into documents
 - Don't give work artifacts permanent file names
 
 ## Robustness gate
