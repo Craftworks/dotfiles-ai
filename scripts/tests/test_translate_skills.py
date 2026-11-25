@@ -281,13 +281,15 @@ class InvalidInputTest(unittest.TestCase):
         self.assertEqual(repo.calls(), [])
         self.assertFalse((repo.root / "skills.en").exists())
 
-    def test_uncommitted_changes_in_the_target_skill_are_an_error(self):
+    def assert_uncommitted_target(self, after, remain, before=()):
         repo = Repo(self)
         repo.write("skills.ja/sample/SKILL.md", SKILL)
         repo.write("skills.en/sample/SKILL.md", SKILL_EN)
+        for rel, text in before:
+            repo.write(rel, text)
         repo.commit()
-        repo.write("skills.ja/sample/SKILL.md", SKILL.replace("一つ目", "新しい"))
-        repo.write("skills.en/sample/SKILL.md", SKILL_EN + "- Edited by hand\n")
+        for rel, text in after:
+            repo.write(rel, text)
 
         result = repo.run()
 
@@ -298,45 +300,35 @@ class InvalidInputTest(unittest.TestCase):
             "commit or discard skills.en/sample, then rerun\n",
         )
         self.assertEqual(repo.calls(), [])
-        self.assertEqual(repo.read("skills.en/sample/SKILL.md"), SKILL_EN + "- Edited by hand\n")
+        for rel, text in remain:
+            self.assertEqual(repo.read(rel), text)
+
+    def test_uncommitted_changes_in_the_target_skill_are_an_error(self):
+        edited = SKILL_EN + "- Edited by hand\n"
+        self.assert_uncommitted_target(
+            after=[
+                ("skills.ja/sample/SKILL.md", SKILL.replace("一つ目", "新しい")),
+                ("skills.en/sample/SKILL.md", edited),
+            ],
+            remain=[("skills.en/sample/SKILL.md", edited)],
+        )
 
     def test_uncommitted_changes_only_in_the_target_are_an_error(self):
-        repo = Repo(self)
-        repo.write("skills.ja/sample/SKILL.md", SKILL)
-        repo.write("skills.en/sample/SKILL.md", SKILL_EN)
-        repo.commit()
-        repo.write("skills.en/sample/SKILL.md", SKILL_EN + "- Edited by hand\n")
-
-        result = repo.run()
-
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(
-            result.stderr,
-            "sample: skills.en/sample has uncommitted changes. "
-            "commit or discard skills.en/sample, then rerun\n",
+        edited = SKILL_EN + "- Edited by hand\n"
+        self.assert_uncommitted_target(
+            after=[("skills.en/sample/SKILL.md", edited)],
+            remain=[("skills.en/sample/SKILL.md", edited)],
         )
-        self.assertEqual(repo.calls(), [])
-        self.assertEqual(repo.read("skills.en/sample/SKILL.md"), SKILL_EN + "- Edited by hand\n")
 
     def test_an_uncommitted_target_file_other_than_skill_md_is_an_error(self):
-        repo = Repo(self)
-        repo.write("skills.ja/sample/SKILL.md", SKILL)
-        repo.write("skills.en/sample/SKILL.md", SKILL_EN)
-        repo.write("skills.en/sample/notes.md", "clean\n")
-        repo.commit()
-        repo.write("skills.en/sample/notes.md", "dirty\n")
-
-        result = repo.run()
-
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(
-            result.stderr,
-            "sample: skills.en/sample has uncommitted changes. "
-            "commit or discard skills.en/sample, then rerun\n",
+        self.assert_uncommitted_target(
+            before=[("skills.en/sample/notes.md", "clean\n")],
+            after=[("skills.en/sample/notes.md", "dirty\n")],
+            remain=[
+                ("skills.en/sample/notes.md", "dirty\n"),
+                ("skills.en/sample/SKILL.md", SKILL_EN),
+            ],
         )
-        self.assertEqual(repo.calls(), [])
-        self.assertEqual(repo.read("skills.en/sample/notes.md"), "dirty\n")
-        self.assertEqual(repo.read("skills.en/sample/SKILL.md"), SKILL_EN)
 
 
 class NonMarkdownCopyTest(unittest.TestCase):
