@@ -34,6 +34,8 @@ FAKE_TRANSLATOR = textwrap.dedent(
         sys.exit(1)
     if mode == "sleep":
         time.sleep(30)
+    if mode == "sleep-2":
+        time.sleep(2)
     if mode == "empty":
         sys.exit(0)
     if mode == "not-json":
@@ -706,15 +708,23 @@ class TranslatorFailureTest(unittest.TestCase):
             "translator output is not a JSON object with a description string "
             "and a body array of strings",
         )
+        self.assertEqual(len(self.repo.calls()), 1, msg="a failed call was retried")
 
     def test_output_with_an_empty_description(self):
-        # The spec fixes that this fails, not the cause wording, so only the
-        # rule name and the next action are pinned.
-        result = self.repo.run(mode="empty-description")
-        self.assertEqual(result.returncode, 1)
-        self.assertTrue(result.stderr.startswith("sample: "), msg=result.stderr)
-        self.assertTrue(result.stderr.endswith(f"{NEXT_ACTION}\n"), msg=result.stderr)
-        self.assertEqual(self.repo.snapshot(), {})
+        self.assert_failed(
+            self.repo.run(mode="empty-description"),
+            "translator output description does not keep "
+            "the Markdown marker of the Japanese",
+        )
+
+    def test_the_default_timeout_allows_a_two_second_call(self):
+        result = self.repo.run(mode="sleep-2")
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            result.stdout,
+            translated_report(self.repo.root, ["sample"], ["translating sample"]),
+        )
+        self.assertEqual(self.repo.read("rules.en/sample/body.md"), EN_BODY)
 
     def test_a_translator_that_exceeds_the_timeout(self):
         result = self.repo.run("--timeout", "1", mode="sleep")

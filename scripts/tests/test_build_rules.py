@@ -5,7 +5,7 @@
 #   Condition 2 (--check)                    -> CheckModeTest
 #   Condition 3 (write nothing on bad input) -> InvalidInputTest
 #   Common: idempotent                       -> IdempotencyTest
-#   Not a done condition: globs -> paths     -> GoldenFixtureTest.test_globs
+#   Condition 4 (paths frontmatter)          -> GoldenFixtureTest.test_globs
 #
 # Format fixed here (the tests decide this as the specification):
 #   - Cursor frontmatter is ordered description, globs, alwaysApply.
@@ -151,7 +151,7 @@ class GoldenFixtureTest(unittest.TestCase):
         self.check_case("always")
 
     def test_globs(self):
-        # The conversion table lives here: globs becomes paths in the Claude format (in the golden).
+        # scripts/SPEC.md done condition 4. The bytes are the golden.
         self.check_case("globs")
 
     def test_auto(self):

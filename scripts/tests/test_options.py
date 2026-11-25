@@ -1,9 +1,9 @@
 # Test specification for the language-code rule in scripts/options.py.
 #
 # Every script builds an edition path from a language code, so the rule is
-# shared. SPEC: a code is letters, digits, "-" and "_" only, so a value
-# cannot leave the repository. The script-level tests pin the error line
-# for "../x"; these pin which other values are accepted or rejected.
+# shared. The sentence is in scripts/SPEC.md. The script-level tests pin
+# the error line for "../x"; these pin which other values are accepted or
+# rejected.
 
 import sys
 import unittest
@@ -22,7 +22,8 @@ class LanguageCodeTest(unittest.TestCase):
                 self.assertEqual(options.language([code], "lang", "en"), code)
 
     def test_anything_else_is_rejected(self):
-        for code in ["a.b", "a/b", "a\\b", "a b", " en", "en\n", "", "..", "é"]:
+        for code in ["a.b", "a/b", "a\\b", "a b", " en", "en\n", "", "..", "é",
+                     "a:b", "a$b", "a,b", "a;b"]:
             with self.subTest(code=code):
                 with self.assertRaises(options.OptionError):
                     options.language([code], "lang", "en")

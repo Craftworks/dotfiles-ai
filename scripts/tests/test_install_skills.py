@@ -14,6 +14,8 @@ from pathlib import Path
 from support import install_scripts
 
 TESTS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(TESTS_DIR.parent))
+import skill_source  # noqa: E402
 REPO_ROOT = TESTS_DIR.parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "install-skills"
 NAME = "install-skills"
@@ -580,7 +582,10 @@ class SimpleFrontmatterTest(unittest.TestCase):
         self.install("name: alpha\n\ndescription: A skill.\n")
 
     def test_a_value_may_contain_a_colon(self):
-        self.install("name: alpha\ndescription: Use when: a, b.\n")
+        frontmatter = "name: alpha\ndescription: Use when: a, b.\n"
+        parsed = skill_source.parse_skill_md(f"---\n{frontmatter}---\n\nbody\n", "alpha")
+        self.assertEqual(parsed.description, "Use when: a, b.")
+        self.install(frontmatter)
 
 
 class ExtraFrontmatterTest(unittest.TestCase):
