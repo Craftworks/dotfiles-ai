@@ -281,14 +281,14 @@ class InvalidInputTest(unittest.TestCase):
         self.assertEqual(repo.calls(), [])
         self.assertFalse((repo.root / "skills.en").exists())
 
-    def assert_uncommitted_target(self, after, remain, before=()):
+    def assert_uncommitted_target(self, after_commit, after_run, before_commit=()):
         repo = Repo(self)
         repo.write("skills.ja/sample/SKILL.md", SKILL)
         repo.write("skills.en/sample/SKILL.md", SKILL_EN)
-        for rel, text in before:
+        for rel, text in before_commit:
             repo.write(rel, text)
         repo.commit()
-        for rel, text in after:
+        for rel, text in after_commit:
             repo.write(rel, text)
 
         result = repo.run()
@@ -300,31 +300,31 @@ class InvalidInputTest(unittest.TestCase):
             "commit or discard skills.en/sample, then rerun\n",
         )
         self.assertEqual(repo.calls(), [])
-        for rel, text in remain:
+        for rel, text in after_run:
             self.assertEqual(repo.read(rel), text)
 
     def test_uncommitted_changes_in_the_target_skill_are_an_error(self):
         edited = SKILL_EN + "- Edited by hand\n"
         self.assert_uncommitted_target(
-            after=[
+            after_commit=[
                 ("skills.ja/sample/SKILL.md", SKILL.replace("一つ目", "新しい")),
                 ("skills.en/sample/SKILL.md", edited),
             ],
-            remain=[("skills.en/sample/SKILL.md", edited)],
+            after_run=[("skills.en/sample/SKILL.md", edited)],
         )
 
     def test_uncommitted_changes_only_in_the_target_are_an_error(self):
         edited = SKILL_EN + "- Edited by hand\n"
         self.assert_uncommitted_target(
-            after=[("skills.en/sample/SKILL.md", edited)],
-            remain=[("skills.en/sample/SKILL.md", edited)],
+            after_commit=[("skills.en/sample/SKILL.md", edited)],
+            after_run=[("skills.en/sample/SKILL.md", edited)],
         )
 
     def test_an_uncommitted_target_file_other_than_skill_md_is_an_error(self):
         self.assert_uncommitted_target(
-            before=[("skills.en/sample/notes.md", "clean\n")],
-            after=[("skills.en/sample/notes.md", "dirty\n")],
-            remain=[
+            before_commit=[("skills.en/sample/notes.md", "clean\n")],
+            after_commit=[("skills.en/sample/notes.md", "dirty\n")],
+            after_run=[
                 ("skills.en/sample/notes.md", "dirty\n"),
                 ("skills.en/sample/SKILL.md", SKILL_EN),
             ],
