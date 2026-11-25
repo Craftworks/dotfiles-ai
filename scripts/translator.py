@@ -176,6 +176,8 @@ def check_output(source_lines: list[str], output: str,
     contract. Body line numbers are 1-based.
     """
     description, body = parse_answer(output)
+    if description == "":
+        raise TranslatorFailed("translator output description is empty")
     if len(body) != len(source_lines) - 1:
         raise TranslatorFailed(
             f"translator output body has {len(body)} lines "

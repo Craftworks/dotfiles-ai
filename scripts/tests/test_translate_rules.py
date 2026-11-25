@@ -713,8 +713,7 @@ class TranslatorFailureTest(unittest.TestCase):
     def test_output_with_an_empty_description(self):
         self.assert_failed(
             self.repo.run(mode="empty-description"),
-            "translator output description does not keep "
-            "the Markdown marker of the Japanese",
+            "translator output description is empty",
         )
 
     def test_the_default_timeout_allows_a_two_second_call(self):
