@@ -33,7 +33,7 @@ Done conditions:
 1. Against the frozen snapshot of the real rules (`scripts/tests/fixtures/real/`, which holds the Japanese sources), the generated files match the expected outputs byte for byte
 2. `--check` passes on matching outputs and fails on a hand-edited, missing, or absent output
 3. Invalid input exits with an error and writes no output file
-4. On a fixture with globs, the Claude format carries a correct `paths` frontmatter
+4. On a fixture with globs, the Claude frontmatter is `paths` with that globs string as its one list item
 
 ## install-skills and install-rules
 
