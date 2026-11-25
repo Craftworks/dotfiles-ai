@@ -715,6 +715,7 @@ class TranslatorFailureTest(unittest.TestCase):
             self.repo.run(mode="empty-description"),
             "translator output description is empty",
         )
+        self.assertEqual(len(self.repo.calls()), 1, msg="a failed call was retried")
 
     def test_the_default_timeout_allows_a_two_second_call(self):
         result = self.repo.run(mode="sleep-2")
