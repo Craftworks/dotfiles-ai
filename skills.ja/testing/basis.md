@@ -38,9 +38,10 @@
 - t_wada『AI時代のTDD』（講演スライド、2026-04-20 版）: https://files.speakerdeck.com/presentations/5570d7aff96e4cbbbff1076108585202/tdd-in-ai-era-20260420-recruit-edition.pdf
 - 実践者の公開 AI スキル: obra/superpowers の test-driven-development スキル https://github.com/obra/superpowers/blob/main/skills/test-driven-development/SKILL.md （2026-11-24 に main で参照。commit は固定していない）
 
-## 追記（2026-11-25）：spec-migration.md の追加
+## 追記（2026-11-25）：spec-compression.md の追加
 
-仕様文書からテストコードへの移植手順を、SKILL.md の参照ファイルとして追加した（自作）。
+仕様文書の細部を消す前の確認手順を、SKILL.md の参照ファイルとして追加した（自作）。
 
-- きっかけ：2026-11-24 にテスト仕様書の痩身化で、移植が直接指示で場当たりに行われ、削除した文とテストの照合が手順として無かった
+- きっかけ：2026-11-24 のテスト仕様書の痩身化で、細部を消す作業が直接指示で場当たりに行われ、コードとテストへの照合が手順として無かった
+- 前提：細部の記述はコードが持ち、テストはそれを独立に照合する
 - 判定基準（削除判定と圧縮の完了条件）は change-discipline が持つ。このファイルには書き直していない
