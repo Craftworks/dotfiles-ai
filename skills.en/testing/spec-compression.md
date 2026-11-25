@@ -30,9 +30,10 @@ Neither code nor tests can express "what is not written" and "that expected valu
 1. For each item, check whether the code expresses the detail. If it does not, the item is not a candidate for deletion (treat it as an unimplemented spec or a gap in the implementation)
 2. Check whether a test pins it. If not, write or strengthen a test using the document's description as the oracle. Take expected values from the document, not from the implementation's current output
 3. Apply the deletion criteria from change-discipline. Do not delete items that fail the criteria. Keep them in the document
-4. Delete from the document only the items that meet the conditions. Do not copy the wording into tests or code
-5. Run the entire suite
-6. In the completion report, attach the items you deleted and the items you kept in the document
+4. Sentences repeated across sections are moved to a common part and stated once
+5. Delete from the document only the items that meet the conditions. Do not copy the wording into tests or code
+6. Run the entire suite
+7. In the completion report, attach the items that were deleted and the items that were kept in the document
 
 ## Failure modes
 

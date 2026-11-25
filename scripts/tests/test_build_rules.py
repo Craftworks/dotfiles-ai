@@ -2,10 +2,10 @@
 #
 # Mapping to the done conditions in scripts/SPEC.md:
 #   Condition 1 (match the real files)       -> RealRulesSnapshotTest
-#   Condition 2 (idempotent)                 -> IdempotencyTest
-#   Condition 3 (--check)                    -> CheckModeTest
-#   Condition 4 (write nothing on bad input) -> InvalidInputTest
-#   Condition 5 (globs -> paths)             -> GoldenFixtureTest.test_globs
+#   Condition 2 (--check)                    -> CheckModeTest
+#   Condition 3 (write nothing on bad input) -> InvalidInputTest
+#   Common: idempotent                       -> IdempotencyTest
+#   Not a done condition: globs -> paths     -> GoldenFixtureTest.test_globs
 #
 # Format fixed here (the tests decide this as the specification):
 #   - Cursor frontmatter is ordered description, globs, alwaysApply.
@@ -151,7 +151,7 @@ class GoldenFixtureTest(unittest.TestCase):
         self.check_case("always")
 
     def test_globs(self):
-        # Done condition 5: globs becomes paths in the Claude format (in the golden).
+        # The conversion table lives here: globs becomes paths in the Claude format (in the golden).
         self.check_case("globs")
 
     def test_auto(self):
@@ -282,7 +282,7 @@ class CheckModeTest(unittest.TestCase):
 
 
 class InvalidInputTest(unittest.TestCase):
-    """Done condition 4: invalid input exits with an error and writes no output."""
+    """Done condition 3: invalid input exits with an error and writes no output."""
 
     def check_invalid(self, case: str):
         root = make_root(FIXTURES / "invalid" / case)
